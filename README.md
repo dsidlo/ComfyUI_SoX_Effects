@@ -2,8 +2,7 @@
 
 This repository contains a collection of ComfyUI nodes for applying various audio effects using the SoX library. These nodes allow users to manipulate audio files within the ComfyUI framework, enhancing the capabilities of generative AI models for audio processing tasks.
 
-![ComfyUI_SoX_Effects Workflow Image](workflows/sox-test-1-no-workflow-color 2026-01-28 01-31-04.png)
-<img src="example/sox-test-1-no-workflow-color%202026-01-28%2001-31-04.png?raw">
+![ComfyUI_SoX_Effects Workflow Image](example/SoxUtilMuxAudio5_1 Testing Workflow%20(0.1.1)%202026-01-30%2014-22-10.png)
 
 ## Effects supported (61)
 
@@ -41,6 +40,7 @@ Added SoxUtilMuxAudio5-1
       - Commonly used in level meters and dynamics processing.
     4. Max Amplitude
       - Used with true peak meters to catch intersample peaks that could distort in playback or conversion. 
+    5. Auto-characterized tracks for rms_power and max_amplitude mixing modes (Standard, Sample_Accurate, Absonic). Tracks are processed differently based on characteristics to optimize mixing for each mode.
 
 Requires Torch Audio.
 

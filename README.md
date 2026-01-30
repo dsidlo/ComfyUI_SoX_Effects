@@ -2,7 +2,6 @@
 
 This repository contains a collection of ComfyUI nodes for applying various audio effects using the SoX library. These nodes allow users to manipulate audio files within the ComfyUI framework, enhancing the capabilities of generative AI models for audio processing tasks.
 
-![ComfyUI_SoX_Effects Workflow Image](example/SoxUtilMuxAudio5_1 Testing Workflow%20(0.1.1)%202026-01-30%2014-22-10.png)
 <img src="example/SoxUtilMuxAudio5_1 Testing Workflow (0.1.1) 2026-01-30 14-22-10.png?raw">
 
 ## Effects supported (61)

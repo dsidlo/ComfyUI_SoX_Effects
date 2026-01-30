@@ -1188,7 +1188,7 @@ Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
                         img_mean = img_np.mean().item()
                         if img_mean < 10:
                             errors.append(f"Dark spectrogram {label} b{b}: mean={img_mean:.1f} (silent/short audio?)")
-                        img_t = torch.from_numpy(img_np).to(torch.uint8).unsqueeze(0)
+                        img_t = (torch.from_numpy(img_np).to(torch.float32) / 255.0).unsqueeze(0)
                         batch_imgs.append(img_t)
                         if png_prefix.strip():
                             # Incremental filename sequence to avoid overwrites

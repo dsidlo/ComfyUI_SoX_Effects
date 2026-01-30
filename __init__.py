@@ -6,6 +6,7 @@ import torch
 import torchaudio
 import numpy as np
 import uuid
+import re
 from PIL import Image
 
 class SoxApplyEffectsNode:
@@ -2296,23 +2297,31 @@ class SoxUtilMuxAudio5_1:
     def INPUT_TYPES(cls):
         optional = {
             "enable_mux": ("BOOLEAN", {"default": True}),
-            "process_mode": (["auto", "torch", "sox"], {"default": "torch"}),
             "mute_all": ("BOOLEAN", {"default": False}),
+            "solo_channel": (["none", "1", "2", "3", "4", "5"], {"default": "none"}),
+            "═══ MIX MODE ═══": ("STRING", {"default": "", "tooltip": "Mix mode and balance group"}),
             "mix_mode": (["linear_sum", "rms_power", "average", "max_amplitude"], {"default": "linear_sum"}),
-            "pad_mode": (["zero_fill", "loop_repeat", "fade_trim"], {"default": "zero_fill"}),
-            "auto_normalize": ("BOOLEAN", {"default": False}),
             "mix_preset": (["none", "equal", "vocals_lead", "bass_heavy", "wide_stereo"], {"default": "none"}),
+            "−−− AUTO VOL BALANCE −−−": ("STRING", {"default": "", "tooltip": "Auto volume balance group"}),
+            "auto_vol_balance": ("BOOLEAN", {"default": False, "tooltip": "Auto-adjust `vol_n` dB to target metric (torch only, post-resample, after presets)"}),
+            "target_rms_db": ("FLOAT", {"default": -18.0, "min": -60.0, "max": -6.0, "step": 0.5, "tooltip": "RMS target dB for rms_power mode"}),
+            "target_peak_db": ("FLOAT", {"default": -6.0, "min": -20.0, "max": 0.0, "step": 0.5, "tooltip": "Peak target dBFS for max_amplitude mode (headroom)"}),
+            "pad_mode": (["zero_fill", "loop_repeat", "fade_trim"], {"default": "zero_fill"}),
+            "auto_normalize": ("BOOLEAN", {"default": True, "tooltip": "Post-mix peak normalize to -1dB headroom + clamp <=1.0 (default: on, prevents clipping/distortion)"}),
+            "pre_mix_gain_db": ("FLOAT", {"default": -3.0, "min": -12.0, "max": 3.0, "step": 0.1, "tooltip": "Pre-mix gain reduction dB (headroom; negative reduces gain pre-mix/effects to prevent clipping)."}),
             "prev_params": ("SOX_PARAMS",),
+            "═══ SAVE OPTIONS ═══": ("STRING", {"default": "", "tooltip": "Save options group"}),
             "enable_save": ("BOOLEAN", {"default": False}),
-            "file_prefix": ("STRING", {"default": "", "multiline": False}),
+            "file_prefix": ("STRING", {"default": "output/audio/SoX_Effects", "multiline": False}),
             "save_format": (["wav", "flac", "mp3", "ogg"], {"default": "wav"}),
+            "═══ TRACK CHANNELS 1-5 ═══": ("STRING", {"default": "", "tooltip": "enable_audio/vol/mute/in-audio for each channel 1-5"}),
         }
         for i in range(5):
+            optional[f"−−−− Track {i+1} −−−−"] = ("STRING", {"default": "", "tooltip": f"Controls for Track [{i+1}]"})
             optional[f"enable_audio_{i+1}"] = ("BOOLEAN", {"default": True})
             optional[f"vol_{i+1}"] = ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1})
             optional[f"mute_{i+1}"] = ("BOOLEAN", {"default": False})
-            optional[f"solo_{i+1}"] = ("BOOLEAN", {"default": False})
-            optional[f"in-audio-{i}"] = ("AUDIO",)
+            optional[f"in-audio-{i+1}"] = ("AUDIO",)
         return {"optional": optional}
 
     RETURN_TYPES = ("AUDIO", "AUDIO", "STRING", "SOX_PARAMS")
@@ -2320,26 +2329,63 @@ class SoxUtilMuxAudio5_1:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Utilities"
     DESCRIPTION = """AUDIO mux/mixer: 5 optional `in-audio-0..4` AUDIO → mono/stereo AUDIO.
-Quick opts: mix_mode (linear_sum|rms|avg|max), pad_mode (zero|loop|fade), auto_norm (-1dB), preset (overrides vols).
-Per-ch 1-5: enable_audio (on), vol dB (-60..+12, 0dB=unity), mute/solo; mute_all override.
-torch: resamp→mono→pad(vol/mode)→mix→norm→mono/stereo.
-sox: temps→sox -m -v vol*→mono/norm (linear basic).
-No active/enable=off → 1s silence dummy.
-enable_mux: skip if off.
-mux-settings STRING: settings/vols/mutes/solos/audios/active/mode; "** Enabled **".
-process_mode auto/torch/sox (auto=sox if simple).
-sox_params passthrough.
-enable_save (default off), file_prefix (""), save_format (wav|flac|mp3|ogg): if on+prefix saves cwd/{prefix}_mono|stereo_{uid}.{fmt}; paths in mux-settings."""
+
+Quick opts: 
+   - mix_mode (linear_sum|rms_power|average|max_amplitude) 
+   - pad_mode (zero_fill|loop_repeat|fade_trim), auto_normalize (-1dB peak), presets (override vols).
+     - zero_fill: Shorter track are padded with silence to match longest track.
+     - loop_repeat: Shorter track are repeated to match longest track.
+     - fade_trim: Shorter track are faded in/out to match longest track.
+
+Global: 
+   - `mute_all`, 
+   - `solo_channel` (exclusive)
+   - mix_mode `torch` (default): 
+     - torch mix: resample to first SR → mono (mean) → pad/vol → mix_mode → clamp/norm → mono/stereo AUDIO.
+     - Not active/`enable_mux=off` → 1s silence dummy `[1,1,44100]@44100Hz`.
+   - `enable_save` (off), `file_prefix` (`output/audio/SoX_Effects`), 
+     - `save_format`: incremental saves `{prefix}_mono/stereo_{0001}.{fmt}` (abs paths logged).
+
+Per-channel 1-5: 
+   - `enable_audio_n` (default True)
+   - `vol_n` dB (-60/+12, 0dB=unity) `mute_n`
+
+#### rms_power Mixing Tips
+  `rms_power` prioritizes **perceived loudness** (RMS average: `√(mean(x_i²))` power-conserving, no clip).
+  `max_amplitude` prioritizes **peak loudness** (max absolute value).
+
+**Target RMS levels** (rough, per-track pre-mix):
+   - Kick/snare: -18 to -12 dB RMS
+   - Bass: -20 to -14 dB RMS
+   - Vocals lead: -18 to -14 dB; backing: -24 to -18 dB
+   - Master bus: -20 to -16 dB RMS (headroom)
+
+**Best practices**:
+   - Meter RMS on tracks/buses/master (DAWs: Reaper/Logic built-in; free: Klanghelm VUMT, Youlean Loudness Meter free).
+   - Gain stage + compress for dynamics → LUFS (-14/-9 streaming).
+   - Great for pop/EDM/rock/podcasts (consistent loudness).
+
+Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-mux.
+
+#### Auto Vol Balance (torch only)
+   - `auto_vol_balance` toggle: analyzes active channels (post-resample → mono), adds delta dB to `vol_n` (after presets) to hit target.
+   - `rms_power`: RMS `target_rms_db` (-18dB def).
+   - `max_amplitude`: Peak `target_peak_db` (-6dBFS def)
+   - Logs measured/deltas to `mux-settings`.
+"""
 
     def process(self, **kwargs):
         enable_mux = kwargs.get("enable_mux", True)
         mute_all = kwargs.get("mute_all", False)
-        vols = [kwargs.get(f"vol_{i+1}", 1.0) for i in range(5)]
+        vols = [kwargs.get(f"vol_{i+1}", 0.0) for i in range(5)]
         mutes = [kwargs.get(f"mute_{i+1}", False) for i in range(5)]
-        solos = [kwargs.get(f"solo_{i+1}", False) for i in range(5)]
+        solo_channel = kwargs.get("solo_channel", "none")
+        solos = [False] * 5
+        if solo_channel != "none":
+            solos[int(solo_channel) - 1] = True
         enables = [kwargs.get(f"enable_audio_{i+1}", True) for i in range(5)]
-        any_solo = any(solos)
-        audios = [kwargs.get(f"in-audio-{i}", None) for i in range(5)]
+        any_solo = solo_channel != "none"
+        audios = [kwargs.get(f"in-audio-{i+1}", None) for i in range(5)]
         mix_mode = kwargs.get("mix_mode", "linear_sum")
         pad_mode = kwargs.get("pad_mode", "zero_fill")
         auto_normalize = kwargs.get("auto_normalize", False)
@@ -2353,20 +2399,26 @@ enable_save (default off), file_prefix (""), save_format (wav|flac|mp3|ogg): if 
         if mix_preset != "none":
             vols = preset_vols[mix_preset]
         linear_vols = [10 ** (v / 20.0) for v in vols]
-        process_mode = kwargs.get("process_mode", "torch")
         prev_params = kwargs.get("prev_params", None)
         current_params = prev_params["sox_params"] if prev_params is not None else []
         enable_save = kwargs.get("enable_save", False)
         file_prefix = kwargs.get("file_prefix", "").strip()
         save_format = kwargs.get("save_format", "wav")
-        used_mode = process_mode
-        if process_mode == "auto":
-            used_mode = "torch"
+        pre_mix_gain_db = kwargs.get("pre_mix_gain_db", -3.0)
+        auto_vol_balance = kwargs.get("auto_vol_balance", False)
+        target_rms_db = kwargs.get("target_rms_db", -18.0)
+        target_peak_db = kwargs.get("target_peak_db", -6.0)
         active_indices = []
         for i in range(5):
             audio = audios[i]
             if audio is not None and audio["waveform"].numel() > 0 and enables[i] and not mute_all and not mutes[i] and (not any_solo or solos[i]):
                 active_indices.append(i)
+        target_ch = 1
+        if active_indices:
+            max_ch = 1
+            for ii in active_indices:
+                max_ch = max(max_ch, audios[ii]["waveform"].shape[1])
+            target_ch = min(2, max_ch)
         # dbg-text always
         dbg_parts = [
             f"enable_mux: {enable_mux}",
@@ -2375,12 +2427,12 @@ enable_save (default off), file_prefix (""), save_format (wav|flac|mp3|ogg): if 
             f"pad_mode: {pad_mode}",
             f"auto_normalize: {auto_normalize}",
             f"mix_preset: {mix_preset}",
-            f"process_mode: {process_mode} (used: {used_mode})",
             f"Vols dB: [{', '.join(f'{v:.1f}' for v in vols)}]",
-            f"Enables: {enables}",
-            f"Mutes: {mutes}",
-            f"Solos: {solos}",
+    f"Audio-Enabled: {enables}",
+    f"Mutes: {mutes}",
+            f"Solo channel: {solo_channel}",
             f"Active indices: {active_indices}",
+            f"Target ch: {target_ch}",
         ]
         for i in range(5):
             if audios[i] is not None:
@@ -2398,9 +2450,26 @@ enable_save (default off), file_prefix (""), save_format (wav|flac|mp3|ogg): if 
             dummy_wave_stereo = dummy_wave_mono.repeat(1, 2, 1)
             dummy_audio_stereo = {"waveform": dummy_wave_stereo, "sample_rate": 44100}
             if enable_save and file_prefix:
-                uid = uuid.uuid4().hex[:8]
-                mono_fn = f"{file_prefix}_mono_{uid}.{save_format}"
-                stereo_fn = f"{file_prefix}_stereo_{uid}.{save_format}"
+                dir_path = os.path.dirname(os.path.abspath(f"{file_prefix}_mono_dummy.{save_format}")) or '.'
+                os.makedirs(dir_path, exist_ok=True)
+                pattern_mono = rf"^{re.escape(file_prefix)}_mono_(\d+)\.{re.escape(save_format)}$"
+                pattern_stereo = rf"^{re.escape(file_prefix)}_stereo_(\d+)\.{re.escape(save_format)}$"
+                nums_mono = []
+                nums_stereo = []
+                try:
+                    for f in os.listdir(dir_path):
+                        m = re.match(pattern_mono, f)
+                        if m:
+                            nums_mono.append(int(m.group(1)))
+                        m = re.match(pattern_stereo, f)
+                        if m:
+                            nums_stereo.append(int(m.group(1)))
+                except (OSError, PermissionError):
+                    pass
+                next_mono = max(nums_mono, default=0) + 1
+                next_stereo = max(nums_stereo, default=0) + 1
+                mono_fn = f"{file_prefix}_mono_{next_mono:04d}.{save_format}"
+                stereo_fn = f"{file_prefix}_stereo_{next_stereo:04d}.{save_format}"
                 w_mono = dummy_audio_mono["waveform"].squeeze(0)
                 torchaudio.save(mono_fn, w_mono, dummy_audio_mono["sample_rate"], format=save_format)
                 full_mono = os.path.abspath(mono_fn)
@@ -2409,79 +2478,8 @@ enable_save (default off), file_prefix (""), save_format (wav|flac|mp3|ogg): if 
                 full_stereo = os.path.abspath(stereo_fn)
                 dbg_parts.append(f"Saved mono: {full_mono}")
                 dbg_parts.append(f"Saved stereo: {full_stereo}")
-            dbg_text = enabled_prefix + "\\n".join(dbg_parts)
+            dbg_text = enabled_prefix + "\n".join(dbg_parts)
             return (dummy_audio_mono, dummy_audio_stereo, dbg_text, {"sox_params": current_params})
-        if used_mode == "sox":
-            try:
-                subprocess.run(["sox", "-h"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, capture_output=True, check=True, timeout=5)
-            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-                raise RuntimeError("""SoX binary not available ('sox -h' failed).
-
-Install SoX: Ubuntu/Debian `sudo apt install sox`, macOS `brew install sox`, Windows sox.sourceforge.net.
-
-For 'auto' mode, 'torch' is default fallback (torchaudio always available).""")
-            tmp_paths = []
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_mono:
-                mono_path = tmp_mono.name
-            cmd = ["sox", "-m"]
-            for i in active_indices:
-                audio_i = audios[i]
-                sr_i = audio_i["sample_rate"]
-                w_i = audio_i["waveform"][0:1]
-                save_w = w_i.squeeze(0)
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_i:
-                    tmp_path = tmp_i.name
-                    torchaudio.save(tmp_path, save_w, sr_i)
-                    tmp_paths.append(tmp_path)
-                cmd += ["-v", f"{linear_vols[i]:g}", tmp_path]
-            cmd += [mono_path]
-            try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
-            except subprocess.CalledProcessError as e:
-                for tp in tmp_paths:
-                    if os.path.exists(tp):
-                        os.unlink(tp)
-                if os.path.exists(mono_path):
-                    os.unlink(mono_path)
-                raise RuntimeError(f"SoX mixer failed: {e.stderr}")
-            mixed_mono, target_sr = torchaudio.load(mono_path)
-            for tp in tmp_paths:
-                if os.path.exists(tp):
-                    os.unlink(tp)
-            os.unlink(mono_path)
-            # to [1,C,T]
-            if mixed_mono.dim() == 1:
-                mixed_mono = mixed_mono.view(1, 1, -1)
-            elif mixed_mono.dim() == 2:
-                mixed_mono = mixed_mono.unsqueeze(0)
-            # mono mean
-            mixed_mono = mixed_mono.mean(dim=1, keepdim=True)
-            dtype = mixed_mono.dtype
-            device = mixed_mono.device
-            peak = torch.max(torch.abs(mixed_mono)).item()
-            if auto_normalize and peak > 1e-8:
-                mixed_mono *= (10 ** (-1 / 20)) / peak
-            if mixed_mono.shape[1] == 1:
-                mixed_stereo = mixed_mono.repeat(1, 2, 1)
-            else:
-                mixed_stereo = mixed_mono[:, :2, :]
-            process_details = f"\\nUsed SOX mix (linear vol sum), Target SR: {target_sr}, Max len: {mixed_mono.shape[2]}, Peak ({'norm to -1dB' if auto_normalize else 'no norm'}): {peak:.3f}"
-            audio_mono = {"waveform": mixed_mono, "sample_rate": target_sr}
-            audio_stereo = {"waveform": mixed_stereo, "sample_rate": target_sr}
-            if enable_save and file_prefix:
-                uid = uuid.uuid4().hex[:8]
-                mono_fn = f"{file_prefix}_mono_{uid}.{save_format}"
-                stereo_fn = f"{file_prefix}_stereo_{uid}.{save_format}"
-                w_mono = audio_mono["waveform"].squeeze(0)
-                torchaudio.save(mono_fn, w_mono, audio_mono["sample_rate"], format=save_format)
-                full_mono = os.path.abspath(mono_fn)
-                w_stereo = audio_stereo["waveform"].squeeze(0)
-                torchaudio.save(stereo_fn, w_stereo, audio_stereo["sample_rate"], format=save_format)
-                full_stereo = os.path.abspath(stereo_fn)
-                dbg_parts.append(f"Saved mono: {full_mono}")
-                dbg_parts.append(f"Saved stereo: {full_stereo}")
-            dbg_text = enabled_prefix + base_dbg + process_details
-            return (audio_mono, audio_stereo, dbg_text, {"sox_params": current_params})
         # Get target_sr, dtype, device from first active
         first_i = active_indices[0]
         first_audio = audios[first_i]
@@ -2489,60 +2487,112 @@ For 'auto' mode, 'torch' is default fallback (torchaudio always available).""")
         first_wave = first_audio["waveform"][0:1]
         dtype = first_wave.dtype
         device = first_wave.device
-        # Resample all active to mono, collect
-        resampled_monos = []
+        # Resample all active to multi-ch, upmix if needed, collect
+        resampled_multis = []
         for i in active_indices:
             audio_i = audios[i]
             w = audio_i["waveform"][0:1]
             sr_i = audio_i["sample_rate"]
-            w_mono = w.mean(dim=1, keepdim=True)
+            orig_c = w.shape[1]
+            if orig_c < target_ch:
+                w = w.repeat(1, target_ch, 1)
             if sr_i != target_sr:
                 resampler = torchaudio.transforms.Resample(sr_i, target_sr)
-                w_mono_2d = w_mono.squeeze(0)
-                w_mono = resampler(w_mono_2d).unsqueeze(0)
-            resampled_monos.append((i, w_mono))
+                w = resampler(w)
+            resampled_multis.append((i, w))
+        auto_dbg = ""
+        if auto_vol_balance and resampled_multis:
+            measured = []
+            deltas = []
+            metric = None
+            target = None
+            current_linear_vols = [10 ** (v / 20.0) for v in vols]  # Post-preset snapshot
+            if mix_mode == "rms_power":
+                metric = "RMS"
+                target = target_rms_db
+                for j, (i_idx, w_multi) in enumerate(resampled_multis):
+                    vol_lin = current_linear_vols[i_idx]
+                    post_vol_multi = w_multi * vol_lin
+                    rms = torch.sqrt(torch.mean(post_vol_multi ** 2))
+                    measured_db = 20 * torch.log10(torch.clamp(rms, min=1e-8)).item()
+                    delta_db = target - measured_db
+                    vols[i_idx] += delta_db
+                    measured.append("{:.1f}".format(measured_db))
+                    deltas.append("{:.1f}".format(delta_db))
+            elif mix_mode == "max_amplitude":
+                metric = "Peak"
+                target = target_peak_db
+                for j, (i_idx, w_multi) in enumerate(resampled_multis):
+                    vol_lin = current_linear_vols[i_idx]
+                    post_vol_multi = w_multi * vol_lin
+                    peak_val = torch.max(torch.abs(post_vol_multi))
+                    measured_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
+                    delta_db = target - measured_db
+                    vols[i_idx] += delta_db
+                    measured.append("{:.1f}".format(measured_db))
+                    deltas.append("{:.1f}".format(delta_db))
+            if metric is not None:
+                linear_vols = [10 ** (v / 20.0) for v in vols]  # Updated after deltas
+                auto_dbg = f"Auto Vol Balance: True | {metric} Target: {target:.1f}dB | Measured (post-vol full) {metric} dB: [{', '.join(measured)}] | Deltas dB: [{', '.join(deltas)}]"
         # max_len after resample
-        max_len = max(wm.shape[2] for _, wm in resampled_monos)
+        max_len = max(wm.shape[2] for _, wm in resampled_multis)
         # Pad, vol, list
         padded_list = []
-        for i, w_mono in resampled_monos:
+        for i, w_multi in resampled_multis:
             vol_i = linear_vols[i]
-            orig_len = w_mono.shape[2]
+            orig_len = w_multi.shape[2]
             pad_len = max_len - orig_len
             if pad_len <= 0:
-                padded = w_mono[:, :, :max_len]
+                padded = w_multi[:, :, :max_len]
             else:
                 if pad_mode == "zero_fill":
-                    padded = torch.nn.functional.pad(w_mono, (0, pad_len))
+                    padded = torch.nn.functional.pad(w_multi, (0, pad_len))
                 elif pad_mode == "loop_repeat":
-                    n_repeat = (pad_len + orig_len - 1) // orig_len
-                    tiled = w_mono.repeat(1, 1, n_repeat)
-                    padded = tiled[:, :, :max_len]
+                    if orig_len <= 0:
+                        padded = torch.zeros((1, target_ch, max_len), dtype=dtype, device=device)
+                    else:
+                        n_repeat = (max_len + orig_len - 1) // orig_len
+                        tiled = w_multi.repeat(1, 1, n_repeat)
+                        padded = tiled[:, :, :max_len]
                 elif pad_mode == "fade_trim":
-                    last_val = w_mono[:, :, -1:]
+                    last_val = w_multi[:, :, -1:]
                     decay_steps = torch.arange(pad_len, dtype=torch.float32, device=device)
                     decay = torch.exp(-5.0 * (decay_steps / pad_len))
                     faded_pad = last_val * decay.view(1, 1, -1)
-                    padded = torch.cat((w_mono, faded_pad), dim=2)
+                    padded = torch.cat((w_multi, faded_pad), dim=2)
             padded *= vol_i
+            padded = padded.to(device=device, dtype=dtype)
+            if padded.shape[2] != max_len:
+                extra_pad = max_len - padded.shape[2]
+                padded = torch.nn.functional.pad(padded, (0, extra_pad))
             padded_list.append(padded)
+        headroom_lin = 10 ** (pre_mix_gain_db / 20.0)
+        for padded in padded_list:
+            padded *= headroom_lin
         # Stack and mix
         stacked = torch.stack(padded_list, dim=0)
         if mix_mode == "linear_sum":
-            mixed_mono = torch.sum(stacked, dim=0)
+            mixed_multi = torch.sum(stacked, dim=0)
         elif mix_mode == "rms_power":
-            mixed_mono = torch.sqrt(torch.sum(stacked ** 2, dim=0))
+            N = stacked.shape[0]
+            mixed_multi = torch.sqrt(torch.sum(stacked ** 2, dim=0) / N)
         elif mix_mode == "average":
-            mixed_mono = torch.mean(stacked, dim=0)
+            mixed_multi = torch.mean(stacked, dim=0)
         elif mix_mode == "max_amplitude":
-            mixed_mono = torch.max(stacked, dim=0)[0]
-        peak = torch.max(torch.abs(mixed_mono)).item()
+            mixed_multi = torch.max(stacked, dim=0)[0]
+        peak = torch.max(torch.abs(mixed_multi)).item()
         if auto_normalize:
             if peak > 1e-8:
-                mixed_mono *= (10 ** (-1 / 20)) / peak
-        process_details = f"\\nUsed torch mix, Target SR: {target_sr}, Max len: {mixed_mono.shape[2]}, Peak ({'norm to -1dB' if auto_normalize else 'no norm'}): {peak:.3f}"
-        # Stereo
-        mixed_stereo = mixed_mono.repeat(1, 2, 1)
+                mixed_multi *= (10 ** (-1 / 20)) / peak
+        mixed_multi = torch.tanh(mixed_multi * 1.25) / 1.25
+        post_peak = torch.max(torch.abs(mixed_multi)).item()
+        process_details = auto_dbg + f"\
+Used torch mix, Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
+        mixed_mono = torch.mean(mixed_multi, dim=1, keepdim=True)
+        if mixed_multi.shape[1] == 1:
+            mixed_stereo = mixed_mono.repeat(1, 2, 1)
+        else:
+            mixed_stereo = mixed_multi[:, :2, :]
         audio_mono = {"waveform": mixed_mono, "sample_rate": target_sr}
         audio_stereo = {"waveform": mixed_stereo, "sample_rate": target_sr}
         if enable_save and file_prefix:
@@ -2557,7 +2607,7 @@ For 'auto' mode, 'torch' is default fallback (torchaudio always available).""")
             full_stereo = os.path.abspath(stereo_fn)
             dbg_parts.append(f"Saved mono: {full_mono}")
             dbg_parts.append(f"Saved stereo: {full_stereo}")
-        dbg_text = enabled_prefix + base_dbg + process_details
+        dbg_text = enabled_prefix + process_details + base_dbg
         return (audio_mono, audio_stereo, dbg_text, {"sox_params": current_params})
 
 class SoxUtilMultiOutputAudio1_5:

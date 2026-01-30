@@ -1418,8 +1418,8 @@ class SoxVadNode:
         return {
             "required": {
                 "audio": ("AUDIO",),
-                "enable_vad": ("BOOLEAN", {"default": True, "tooltip": "vad [-t thres] [-p minlen] [-s maxlen] [-g maxgap]"}),
-                "vad_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "enable_vad": ("BOOLEAN", {"default": True, "tooltip": "Enable VAD (Voice Activity Detection) SoX effect: Trims silence before/after detected speech/audio activity. Usage: Chain early in workflow → SoxApplyEffectsNode for clean recordings (podcasts, vocals). Pairs with Vol for balance."}),
+                "vad_threshold": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "VAD threshold (0.0-1.0): Energy level above which audio is considered 'voice'; trims leading/trailing silence. Higher values trim more aggressively."}),
             },
             "optional": {
                 "prev_params": ("SOX_PARAMS",),
@@ -1428,7 +1428,15 @@ class SoxVadNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Effects"
-    DESCRIPTION = "Vad SoX effect node for chaining."
+    DESCRIPTION = """SoxVadNode: Chains VAD (Voice Activity Detection) SoX effect to SOX_PARAMS.
+
+**What it does**: Adds `vad -t <threshold>` param; trims leading/trailing silence by detecting energy above threshold (0.0-1.0).
+
+**How to use**:
+- Toggle `enable_vad`; adjust `vad_threshold` (0.5 default: balanced).
+- Wire: AUDIO → SoxVadNode → [Vol/Bass/etc.] → SoxApplyEffectsNode → Output.
+- Best early: Clean raw audio (podcasts/vocals) before mixing/gain/EQ.
+- Output: Unchanged AUDIO + updated SOX_PARAMS."""
 
     def process(self, audio, enable_vad=True, vad_threshold=0.5, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params is not None else []
@@ -1443,8 +1451,8 @@ class SoxVolNode:
         return {
             "required": {
                 "audio": ("AUDIO",),
-                "enable_vol": ("BOOLEAN", {"default": True, "tooltip": "vol gain [type [limiter]]"}),
-                "vol_gain": ("FLOAT", {"default": 0.0, "min": -60.0, "max": 60.0, "step": 0.1}),
+                "enable_vol": ("BOOLEAN", {"default": True, "tooltip": "Enable Vol (Volume) SoX effect: Adjusts gain by dB. Usage: Chain for level matching → SoxApplyEffectsNode. Use post-VAD, pre-mix to prevent clipping."}),
+                "vol_gain": ("FLOAT", {"default": 0.0, "min": -60.0, "max": 60.0, "step": 0.1, "tooltip": "Volume gain in dB: Positive boosts amplitude, negative attenuates. 0dB=unity. Use for per-track balance pre-mix/effects."}),
             },
             "optional": {
                 "prev_params": ("SOX_PARAMS",),
@@ -1453,7 +1461,15 @@ class SoxVolNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Effects"
-    DESCRIPTION = "Vol SoX effect node for chaining."
+    DESCRIPTION = """SoxVolNode: Chains Vol (Volume Gain) SoX effect to SOX_PARAMS.
+
+**What it does**: Adds `vol <gain_dB>` param; amplifies/attenuates audio linearly in dB (-60/+60 range).
+
+**How to use**:
+- Toggle `enable_vol`; set `vol_gain` (0.0=unity; +boost, -=cut).
+- Wire: AUDIO → [Vad/etc.] → SoxVolNode → [EQ/Effects] → SoxApplyEffectsNode → Output.
+- Best mid-chain: Balance after trim (VAD), before compression/mix. Prevents overload with negative gain.
+- Output: Unchanged AUDIO + updated SOX_PARAMS."""
 
     def process(self, audio, enable_vol=True, vol_gain=0.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params is not None else []
@@ -2233,63 +2249,164 @@ class SoxUtilMultiInputAudio5_1:
     @classmethod
     def INPUT_TYPES(cls):
         optional = {}
+        optional["resample"] = (["auto", "mono", "stereo"], {"default": "auto", "tooltip": """Channel resample mode:
+• auto: if mix mono+stereo inputs, upmix mono→stereo (stereoize_headroom dB drop + stereoize_delay ms widen first); all-mono→mono, all-stereo→stereo.
+• mono: force downmix all→mono (mean(dim=1, preserve RMS)).
+• stereo: force →stereo (mono→stereoize [-5dB equiv], >2ch→slice first2)."""})
+        optional["=== Stereoize Mono → Stereo ==="] = ("STRING", {"default": "", "tooltip": "Stereoization controls for mono→stereo upmix only (headroom + Haas delay widen)."})
+        optional["stereoize_delay_ms"] = ("INT", {"default": 0, "min": 0, "max": 20, "step": 1, "tooltip": """Delay ms (0-20) applied **only** on mono→stereo upmix: Creates stereo width via Haas effect (delays right ch by N samples=round(N*sr/1000), left padded end to match len). 10-20ms sweet spot; 0=simple repeat."""})
+        optional["stereoize_headroom"] = ("FLOAT", {"default": -3.0, "min": -7.0, "max": 0.0, "step": 0.1, "tooltip": """Headroom drop dB (-7 to 0) **only** on mono→stereo upmix: Attenuates mono before upmix/delay to prevent L/R sum clipping (~+3-6dB uncorrelated gain). Default -3dB ≈ orig -5dB fixed (now adjustable)."""})
         for i in range(5):
             optional[f"in-audio-{i}"] = ("AUDIO",)
+        optional["=== Volume & Gain ==="] = ("STRING", {"default": ""})
+        optional["  --- Master_Volume ---"] = ("STRING", {"default": ""})
+        optional["master_gain_db"] = ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1, "tooltip": "Global master gain dB applied post-mix to both outputs."})
+        optional["=== Track Gain ==="] = ("STRING", {"default": "", "tooltip": "Group label before the per-input gain sliders."})
+        for i in range(5):
+            optional[f"input_gain_{i}"] = ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1, "tooltip": f"Gain dB for in-audio-{i} (post-resample, pre-pad/mix)."})
         return {"optional": optional}
 
     RETURN_TYPES = ("AUDIO", "AUDIO")
     RETURN_NAMES = ("out-audio", "out-audio")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Utilities"
-    DESCRIPTION = """Utility node that accepts 5 optional `in-audio-<n>` (n=0-4) AUDIO inputs and outputs two `out-audio` AUDIO.
-Muxes provided audios by padding to max length (silence), averaging waveforms (first batch item).
-out-audio (1): mono mix [1,C,T].
-out-audio (2): stereo version (mono → dup channels).
-Assumes same sample_rate (uses first); no inputs → dummy zero audio."""
+    DESCRIPTION = """Utility node: 5 optional `in-audio-0..4` → 2x `out-audio` (multi/target_ch mix + stereo).
+
+`resample` (auto/mono/stereo) controls target_ch & per-input ch-resample (mono→stereo: stereoize_headroom dB drop + stereoize_delay ms widen first, pre-sum headroom):
+
+• `auto`: mixed mono+stereo → target_ch=2 (upmix mono→stereoize); all-mono→1, all-stereo→2 (or max≤2).
+• `mono`: target_ch=1 (downmix mean(dim=1, RMS preserve)).
+• `stereo`: target_ch=2 (mono→stereoize, >2ch slice [:2]).
+
+Stereoize (mono→stereo upmix only):
+• `stereoize_headroom` (-7..0 dB): Gain drop pre-upmix (anti-clip sum headroom).
+• `stereoize_delay` (0-20 ms): Right ch delay (Haas width); left end-pad to match len.
+
+SR resample→first (post-ch/stereoize); zero-pad shorts→longest; stack→mean(dim=0)→mix multi [1,C,T].
+- out-audio[0]: mix [1,C,T]
+- out-audio[1]: stereo derive [1,2,T] (dup/slice)
+
+Gains:
+- input_gain_0-4: per-input **post-ch/SR-resample/stereoize pre-pad/mix**
+- master_gain_db: post-mix *both*
+
+Empty → dummy zero [1,C,1024]@44.1kHz (C per resample; stereoize if stereo; gains→zero)."""
 
     def process(self, **kwargs):
-        audios = []
+        master_gain_db = kwargs.get("master_gain_db", 0.0)
+        input_gains_db = [kwargs.get(f"input_gain_{i}", 0.0) for i in range(5)]
+        input_gains_lin = [10 ** (g / 20.0) for g in input_gains_db]
+        master_lin = 10 ** (master_gain_db / 20.0)
+        resample_mode = kwargs.get("resample", "auto")
+        stereoize_delay = int(kwargs.get("stereoize_delay_ms", 0))
+        stereoize_headroom_db = kwargs.get("stereoize_headroom", -3.0)
+        active_audios = []
         for i in range(5):
             a = kwargs.get(f"in-audio-{i}")
             if a is not None:
-                audios.append(a)
-
-        if not audios:
+                active_audios.append((i, a))
+        if not active_audios:
             sr = 44100
-            zero_w = torch.zeros((1, 1, 1024), dtype=torch.float32)
-            zero_audio = {"waveform": zero_w, "sample_rate": sr}
-            return (zero_audio, zero_audio)
+            dtype = torch.float32
+            if resample_mode == "mono":
+                dummy_target_ch = 1
+            elif resample_mode == "stereo":
+                dummy_target_ch = 2
+            else:  # auto
+                dummy_target_ch = 1
+            zero_base = torch.zeros((1, 1, 1024), dtype=dtype)
+            if dummy_target_ch == 2:
+                zero_base *= 10 ** (stereoize_headroom_db / 20.0)
+                # Creates delayed stereo zero waveform for headroom
+                if stereoize_delay > 0:
+                    dummy_sr = 44100
+                    delay_samples = int(round(stereoize_delay * dummy_sr / 1000.0))
+                    left = torch.nn.functional.pad(zero_base, (0, delay_samples))
+                    right = torch.nn.functional.pad(zero_base, (delay_samples, 0))
+                    zero_multi = torch.cat([left[:, 0:1, :], right[:, 0:1, :]], dim=1)
+                else:
+                    zero_multi = zero_base.repeat(1, dummy_target_ch, 1)
+            else:
+                zero_multi = zero_base
+            zero_multi *= master_lin
+            if zero_multi.shape[1] == 1:
+                zero_stereo = zero_multi.repeat(1, 2, 1)
+            else:
+                zero_stereo = zero_multi[:, :2, :]
+            audio_mono = {"waveform": zero_multi, "sample_rate": sr}
+            audio_stereo = {"waveform": zero_stereo, "sample_rate": sr}
+            return (audio_mono, audio_stereo)
 
-        sr = audios[0]["sample_rate"]
-        ws = []
-        for a in audios:
-            w = a["waveform"]
-            # Handle batch >1: take first
-            if w.shape[0] > 1:
-                w = w[0:1]
-            ws.append(w)
+        first_audio = active_audios[0][1]
+        target_sr = first_audio["sample_rate"]
+        first_wave = first_audio["waveform"][0:1]
+        dtype = first_wave.dtype
+        device = first_wave.device
+        if resample_mode == "mono":
+            target_ch = 1
+        elif resample_mode == "stereo":
+            target_ch = 2
+        else:  # "auto"
+            has_mono = any(a["waveform"].shape[1] == 1 for _, a in active_audios)
+            has_stereo = any(a["waveform"].shape[1] >= 2 for _, a in active_audios)
+            if has_mono and has_stereo:
+                target_ch = 2
+            else:
+                target_ch = 1
+                for _, a in active_audios:
+                    target_ch = max(target_ch, a["waveform"].shape[1])
+                target_ch = min(2, target_ch)
+        resampled_multis = []
+        for slot_i, a in active_audios:
+            w = a["waveform"][0:1]
+            sr_i = a["sample_rate"]
+            orig_c = w.shape[1]
+            if orig_c != target_ch:
+                if target_ch == 1:
+                    w = torch.mean(w, dim=1, keepdim=True)
+                elif orig_c == 1:
+                    w *= 10 ** (stereoize_headroom_db / 20.0)
+                    if stereoize_delay > 0 and target_ch == 2:
+                        delay_samples = int(round(stereoize_delay * target_sr / 1000.0))
+                        left = torch.nn.functional.pad(w, (0, delay_samples))
+                        right = torch.nn.functional.pad(w, (delay_samples, 0))
+                        w = torch.cat([left[:, 0:1, :], right[:, 0:1, :]], dim=1)
+                    else:
+                        w = w.repeat(1, target_ch, 1)
+                else:  # slice if orig_c > target_ch
+                    w = w[:, :target_ch, :]
+            if sr_i != target_sr:
+                resampler = torchaudio.transforms.Resample(sr_i, target_sr)
+                w = resampler(w)
+            w = w.to(device=device, dtype=dtype)
+            resampled_multis.append((slot_i, w))
 
-        max_len = max(w.shape[2] for w in ws)
+        max_len = max(w.shape[2] for _, w in resampled_multis)
         padded_ws = []
-        for w in ws:
+        for slot_i, w in resampled_multis:
             pad_len = max_len - w.shape[2]
             if pad_len > 0:
                 w_padded = torch.nn.functional.pad(w, (0, pad_len))
             else:
                 w_padded = w
+            w_padded *= input_gains_lin[slot_i]
             padded_ws.append(w_padded)
 
-        stacked = torch.stack(padded_ws, dim=0)  # [N, 1, C, T]
-        mixed_mono = torch.mean(stacked, dim=0)  # [1, C, T]
+        stacked = torch.stack(padded_ws, dim=0)
+        mixed_multi = torch.mean(stacked, dim=0)
+        mixed_mono = mixed_multi
 
         # Stereo: duplicate if mono
         if mixed_mono.shape[1] == 1:
             mixed_stereo = mixed_mono.repeat(1, 2, 1)
         else:
-            mixed_stereo = mixed_mono[:, :2, :]  # take first 2 channels if multi
+            mixed_stereo = mixed_mono[:, :2, :]
 
-        audio1 = {"waveform": mixed_mono, "sample_rate": sr}
-        audio2 = {"waveform": mixed_stereo, "sample_rate": sr}
+        mixed_mono *= master_lin
+        mixed_stereo *= master_lin
+
+        audio1 = {"waveform": mixed_mono, "sample_rate": target_sr}
+        audio2 = {"waveform": mixed_stereo, "sample_rate": target_sr}
         return (audio1, audio2)
 
 class SoxUtilMuxAudio5_1:
@@ -2299,6 +2416,15 @@ class SoxUtilMuxAudio5_1:
             "enable_mux": ("BOOLEAN", {"default": True}),
             "mute_all": ("BOOLEAN", {"default": False}),
             "solo_channel": (["none", "1", "2", "3", "4", "5"], {"default": "none"}),
+            "═══ REMIX OPTIONS ═══": ("STRING", {"default": "", "tooltip": "Resample mode and stereoize group for input channel handling."}),
+            "resample": (["auto", "mono", "stereo"], {"default": "auto", "tooltip": """Channel resample mode:
+• auto: if mix of mono+stereo inputs, upmix mono→stereo (w/ stereoize); uniform mono→mono, stereo→stereo (≤2ch).
+• mono: downmix all to mono (mean dim=1).
+• stereo: upmix to stereo (mono→stereoize headroom+delay, >2ch slice first2). 
+Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
+            "=== Stereoize Mono → Stereo ===": ("STRING", {"default": "", "tooltip": "Stereoization controls: headroom drop + Haas delay for mono→stereo upmix only."}),
+            "stereoize_delay_ms": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1, "tooltip": """Haas delay ms (0-20): Right ch delayed by ~N samples (sr/1000); left end-pad match len. 0=repeat both ch; 10-20ms stereo width."""}),
+            "stereoize_headroom": ("FLOAT", {"default": -3.0, "min": -7.0, "max": 0.0, "step": 0.1, "tooltip": """Pre-upmix gain drop dB (-7..0): Attenuate mono →stereo sum headroom (~+6dB incoherent). -3dB default safe."""}),
             "═══ MIX MODE ═══": ("STRING", {"default": "", "tooltip": "Mix mode and balance group"}),
             "mix_mode": (["linear_sum", "rms_power", "average", "max_amplitude"], {"default": "linear_sum"}),
             "mix_preset": (["none", "equal", "vocals_lead", "bass_heavy", "wide_stereo"], {"default": "none"}),
@@ -2349,6 +2475,19 @@ Global:
 Per-channel 1-5: 
    - `enable_audio_n` (default True)
    - `vol_n` dB (-60/+12, 0dB=unity) `mute_n`
+
+#### Resample & Stereoize
+`resample` (auto/mono/stereo) sets target_ch, adjusts per-input pre-SR:
+• `auto`: mixed mono+stereo → target_ch=2 (mono→stereoize); all-mono→1, all-stereo→min(2,max_ch)
+• `mono`: target_ch=1 (stereo→mean downmix)
+• `stereo`: target_ch=2 (mono→stereoize, >2ch→[:2])
+
+**Stereoize** (mono→stereo only):
+• `stereoize_headroom` dB: pre-upmix attenuate (anti-clip)
+• `stereoize_delay_ms`: Haas right-delay (pad left end); pads interpolate in resample/pad.
+
+Post-adjust → SR resample → auto_vol_balance (if on) → pad/vol/mix.
+Dummy: matches resample (stereo→stereoize zero).
 
 #### rms_power Mixing Tips
   `rms_power` prioritizes **perceived loudness** (RMS average: `√(mean(x_i²))` power-conserving, no clip).
@@ -2408,6 +2547,9 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         auto_vol_balance = kwargs.get("auto_vol_balance", False)
         target_rms_db = kwargs.get("target_rms_db", -18.0)
         target_peak_db = kwargs.get("target_peak_db", -6.0)
+        resample_mode = kwargs.get("resample", "auto")
+        stereoize_delay_ms = int(kwargs.get("stereoize_delay_ms", 0))
+        stereoize_headroom_db = kwargs.get("stereoize_headroom", -3.0)
         active_indices = []
         for i in range(5):
             audio = audios[i]
@@ -2415,10 +2557,25 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 active_indices.append(i)
         target_ch = 1
         if active_indices:
-            max_ch = 1
-            for ii in active_indices:
-                max_ch = max(max_ch, audios[ii]["waveform"].shape[1])
-            target_ch = min(2, max_ch)
+            if resample_mode == "mono":
+                target_ch = 1
+            elif resample_mode == "stereo":
+                target_ch = 2
+            else:  # auto
+                has_mono = False
+                has_stereo = False
+                max_ch = 1
+                for ii in active_indices:
+                    ch_i = audios[ii]["waveform"].shape[1]
+                    if ch_i == 1:
+                        has_mono = True
+                    if ch_i >= 2:
+                        has_stereo = True
+                    max_ch = max(max_ch, ch_i)
+                if has_mono and has_stereo:
+                    target_ch = 2
+                else:
+                    target_ch = min(2, max_ch)
         # dbg-text always
         dbg_parts = [
             f"enable_mux: {enable_mux}",
@@ -2431,6 +2588,8 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
     f"Audio-Enabled: {enables}",
     f"Mutes: {mutes}",
             f"Solo channel: {solo_channel}",
+            f"resample_mode: {resample_mode}",
+            f"stereoize_delay_ms: {stereoize_delay_ms}, headroom_db: {stereoize_headroom_db:.1f}",
             f"Active indices: {active_indices}",
             f"Target ch: {target_ch}",
         ]
@@ -2445,10 +2604,33 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         process_details = ""
         enabled_prefix = "** Enabled **\n" if enable_mux else ""
         if not enable_mux or not active_indices:
-            dummy_wave_mono = torch.zeros((1, 1, 44100), dtype=torch.float32)
-            dummy_audio_mono = {"waveform": dummy_wave_mono, "sample_rate": 44100}
-            dummy_wave_stereo = dummy_wave_mono.repeat(1, 2, 1)
-            dummy_audio_stereo = {"waveform": dummy_wave_stereo, "sample_rate": 44100}
+            sr = 44100
+            dtype = torch.float32
+            if resample_mode == "mono":
+                dummy_target_ch = 1
+            elif resample_mode == "stereo":
+                dummy_target_ch = 2
+            else:
+                dummy_target_ch = 1
+            zero_base = torch.zeros((1, 1, 44100), dtype=dtype)
+            if dummy_target_ch == 2:
+                zero_base *= 10 ** (stereoize_headroom_db / 20.0)
+                if stereoize_delay_ms > 0:
+                    dummy_sr = sr
+                    delay_samples = int(round(stereoize_delay_ms * dummy_sr / 1000.0))
+                    left = torch.nn.functional.pad(zero_base, (0, delay_samples))
+                    right = torch.nn.functional.pad(zero_base, (delay_samples, 0))
+                    zero_multi = torch.cat([left[:, 0:1, :], right[:, 0:1, :]], dim=1)
+                else:
+                    zero_multi = zero_base.repeat(1, dummy_target_ch, 1)
+            else:
+                zero_multi = zero_base
+            if zero_multi.shape[1] == 1:
+                zero_stereo = zero_multi.repeat(1, 2, 1)
+            else:
+                zero_stereo = zero_multi[:, :2, :]
+            dummy_audio_mono = {"waveform": zero_multi, "sample_rate": sr}
+            dummy_audio_stereo = {"waveform": zero_stereo, "sample_rate": sr}
             if enable_save and file_prefix:
                 dir_path = os.path.dirname(os.path.abspath(f"{file_prefix}_mono_dummy.{save_format}")) or '.'
                 os.makedirs(dir_path, exist_ok=True)
@@ -2494,11 +2676,24 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
             w = audio_i["waveform"][0:1]
             sr_i = audio_i["sample_rate"]
             orig_c = w.shape[1]
-            if orig_c < target_ch:
-                w = w.repeat(1, target_ch, 1)
+            if orig_c != target_ch:
+                if target_ch == 1:
+                    w = torch.mean(w, dim=1, keepdim=True)
+                elif orig_c == 1:
+                    w *= 10 ** (stereoize_headroom_db / 20.0)
+                    if stereoize_delay_ms > 0 and target_ch == 2:
+                        delay_samples = int(round(stereoize_delay_ms * target_sr / 1000.0))
+                        left = torch.nn.functional.pad(w, (0, delay_samples))
+                        right = torch.nn.functional.pad(w, (delay_samples, 0))
+                        w = torch.cat([left[:, 0:1, :], right[:, 0:1, :]], dim=1)
+                    else:
+                        w = w.repeat(1, target_ch, 1)
+                else:
+                    w = w[:, :target_ch, :]
             if sr_i != target_sr:
                 resampler = torchaudio.transforms.Resample(sr_i, target_sr)
                 w = resampler(w)
+            w = w.to(device=device, dtype=dtype)
             resampled_multis.append((i, w))
         auto_dbg = ""
         if auto_vol_balance and resampled_multis:
@@ -2586,8 +2781,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 mixed_multi *= (10 ** (-1 / 20)) / peak
         mixed_multi = torch.tanh(mixed_multi * 1.25) / 1.25
         post_peak = torch.max(torch.abs(mixed_multi)).item()
-        process_details = auto_dbg + f"\
-Used torch mix, Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
+        process_details = auto_dbg + f"Used torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
         mixed_mono = torch.mean(mixed_multi, dim=1, keepdim=True)
         if mixed_multi.shape[1] == 1:
             mixed_stereo = mixed_mono.repeat(1, 2, 1)
@@ -2613,23 +2807,75 @@ Used torch mix, Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.s
 class SoxUtilMultiOutputAudio1_5:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"in-audio": ("AUDIO",)}}
+        optional = {
+            "force_channels": (["auto", "mono", "stereo"], {"default": "auto", "tooltip": "Force output channels: auto=preserve input, mono=downmix to 1ch (mean), stereo=upmix to 2ch (repeat if mono, first 2ch if more)."}),
+            "master_gain_db": ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1, "tooltip": "Global master gain dB applied to input before per-track gains."}),
+            "=== Track Gain ===": ("STRING", {"default": "", "tooltip": "Group label before the per-output track gain sliders."}),
+        }
+        for i in range(5):
+            optional[f"track_gain_{i}"] = ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1, "tooltip": f"Gain dB for out-audio-{i} (multiplicative after master)."})
+        return {"required": {"in-audio": ("AUDIO",)}, "optional": optional}
 
     RETURN_TYPES = ("AUDIO", "AUDIO", "AUDIO", "AUDIO", "AUDIO")
     RETURN_NAMES = ("out-audio-0", "out-audio-1", "out-audio-2", "out-audio-3", "out-audio-4")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Utilities"
-    DESCRIPTION = """Utility node that accepts 1 `in-audio` AUDIO input and outputs 5 `out-audio-n` (n=0-4) identical AUDIO copies.
-If input missing → 5 dummy zero audios [1,1,1024]@44.1kHz."""
+    DESCRIPTION = """Utility node: 1 `in-audio` → 5 `out-audio-0..4` AUDIO outputs (with optional force_channels mono/stereo/auto, master_gain_db, per-track track_gain_0-4 dB).
+
+force_channels (auto/mono/stereo): auto=preserve input channels, mono=downmix to [1,1,T] via mean(dim=1), stereo=up/down to [1,2,T] (repeat mono, first 2ch if more).
+
+Gains: master_gain_db (global dB → lin mul) then per-output track_gain_N dB (lin mul on copy).
+
+Input None → 5 dummy zeros [1,C,1024]@44.1kHz (C=1 mono/2 stereo per force_channels), gains applied (zero→zero)."""
 
     def process(self, **kwargs):
+        force_channels = kwargs.get("force_channels", "auto")
+        master_gain_db = kwargs.get("master_gain_db", 0.0)
+        track_gains_db = [kwargs.get(f"track_gain_{i}", 0.0) for i in range(5)]
         in_audio = kwargs.get("in-audio")
         if in_audio is None:
             sr = 44100
-            zero_w = torch.zeros((1, 1, 1024), dtype=torch.float32)
-            zero_audio = {"waveform": zero_w, "sample_rate": sr}
-            return (zero_audio, zero_audio, zero_audio, zero_audio, zero_audio)
-        return (in_audio, in_audio, in_audio, in_audio, in_audio)
+            dtype_ = torch.float32
+            if force_channels == "mono":
+                zero_w = torch.zeros((1, 1, 1024), dtype=dtype_)
+            elif force_channels == "stereo":
+                zero_mono = torch.zeros((1, 1, 1024), dtype=dtype_)
+                zero_w = zero_mono.repeat(1, 2, 1)
+            else:  # auto
+                zero_w = torch.zeros((1, 1, 1024), dtype=dtype_)
+            master_lin = 10 ** (master_gain_db / 20.0)
+            w_master = zero_w * master_lin
+            outs = []
+            for i in range(5):
+                track_lin = 10 ** (track_gains_db[i] / 20.0)
+                out_w = w_master.clone() * track_lin
+                out_audio = {"waveform": out_w, "sample_rate": sr}
+                outs.append(out_audio)
+            return tuple(outs)
+        else:
+            sr = in_audio["sample_rate"]
+            w = in_audio["waveform"][0:1]
+            device = w.device
+            dtype_ = w.dtype
+            orig_ch = w.shape[1]
+            target_ch = orig_ch if force_channels == "auto" else 1 if force_channels == "mono" else 2
+            if orig_ch != target_ch:
+                if target_ch == 1:
+                    w = torch.mean(w, dim=1, keepdim=True)
+                elif target_ch == 2:
+                    if orig_ch == 1:
+                        w = w.repeat(1, 2, 1)
+                    else:
+                        w = w[:, :2, :]
+            master_lin = 10 ** (master_gain_db / 20.0)
+            w_master = w * master_lin
+            outs = []
+            for i in range(5):
+                track_lin = 10 ** (track_gains_db[i] / 20.0)
+                out_w = w_master.clone() * track_lin
+                out_audio = {"waveform": out_w, "sample_rate": sr}
+                outs.append(out_audio)
+            return tuple(outs)
 
 class SoxMuxWetDry:
     @classmethod

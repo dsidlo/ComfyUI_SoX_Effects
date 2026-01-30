@@ -1110,8 +1110,8 @@ Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
             options += ["-w", window_type]
         if enable_window_adj:
             options += ["-W", str(window_adj)]
-        # if enable_Y_height:  # Disabled: conflicts with -y; resize handles total stack height
-        #     options += ["-Y", str(Y_height)]
+        if enable_Y_height:
+            options += ["-Y", str(Y_height)]
         if comment_text.strip():
             options += ["-c", comment_text]
         debug_str = shlex.join(["spectrogram"] + options)

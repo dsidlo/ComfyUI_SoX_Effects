@@ -2516,6 +2516,8 @@ Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
             "auto_vol_balance": ("BOOLEAN", {"default": False, "tooltip": "Auto-adjust `vol_n` dB to target metric (torch only, post-resample, after presets)"}),
             "target_rms_db": ("FLOAT", {"default": -20.0, "min": -60.0, "max": -6.0, "step": 0.5, "tooltip": "RMS target dBFS per-track pre-mix (-20dB rec. for headroom with multiple coherent tracks); rms_power mode."}),
             "target_peak_db": ("FLOAT", {"default": -9.0, "min": -20.0, "max": 0.0, "step": 0.5, "tooltip": "Peak target dBFS per-track pre-mix for max_amplitude mode (-9dB rec. headroom); now uses coherent voltage sum."}),
+            "track_length_master": (["0", "1", "2", "3", "4", "5"], {"default": "0", "tooltip": """Master track length reference (0=none): Trim longer tracks post-resample to this active track's resampled length (exact duration match at target SR).
+Shorter tracks extended per pad_mode. Use to sync to shortest track (e.g. vocal)."""}),
             "pad_mode": (["zero_fill", "loop_repeat", "fade_trim"], {"default": "zero_fill"}),
             "auto_normalize": ("BOOLEAN", {"default": True, "tooltip": "Post-mix peak normalize to -1dB headroom + clamp <=1.0 (default: on, prevents clipping/distortion)"}),
             "pre_mix_gain_db": ("FLOAT", {"default": -3.0, "min": -12.0, "max": 3.0, "step": 0.1, "tooltip": "Pre-mix gain reduction dB (headroom; negative reduces gain pre-mix/effects to prevent clipping)."}),
@@ -2524,15 +2526,18 @@ Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
             "enable_save": ("BOOLEAN", {"default": False}),
             "file_prefix": ("STRING", {"default": "output/audio/SoX_Effects", "multiline": False}),
             "save_format": (["wav", "flac", "mp3", "ogg"], {"default": "wav"}),
+            "=== Master Volume ===": ("STRING", {"default": "", "tooltip": "Master output volume adjustment (post-mix)."}),
+            "master_vol_db": ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1, "tooltip": "Master volume dBFS (applied after mix, normalize, tanh-clamp)."}),
             "═══ TRACK CHANNELS 1-5 ═══": ("STRING", {"default": "", "tooltip": "enable_audio/vol/mute/in-audio for each channel 1-5"}),
         }
         for i in range(5):
             optional[f"−−−− Track {i+1} −−−−"] = ("STRING", {"default": "", "tooltip": f"Controls for Track [{i+1}]"})
-            optional[f"enable_audio_{i+1}"] = ("BOOLEAN", {"default": True})
+            optional[f"enable_audio_{i+1}"] = ("BOOLEAN", {"default": i < 2})
             optional[f"vol_{i+1}"] = ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1})
             optional[f"mute_{i+1}"] = ("BOOLEAN", {"default": False})
-            optional[f"track_type_{i+1}"] = (["Standard", "Absonic", "Sample-accurate"], {"default": "Standard", "tooltip": """Track Type (rms_power mixing only):
-- Standard: coherent voltage sum (default, music/instrument/vocal stems)
+            optional[f"track_type_{i+1}"] = (["Auto", "Standard", "Absonic", "Sample-accurate"], {"default": "Auto", "tooltip": """Track Type (rms_power or max_amplitude modes):
+- Auto (req. auto_vol_balance=true): crest_db>12=Sample-accurate, ch>=4=Absonic, else Standard (default)
+- Standard: coherent voltage sum (music/instrument/vocal stems)
 - Absonic: coherent sum, sqrt(N)-weight if multiple (spatial/Ambisonics/immersive; sliced to stereo)
 - Sample-accurate: sample-wise MAX (experimental/glitch/granular/phase-critical)"""})
             optional[f"in-audio-{i+1}"] = ("AUDIO",)
@@ -2615,6 +2620,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         any_solo = solo_channel != "none"
         audios = [kwargs.get(f"in-audio-{i+1}", None) for i in range(5)]
         mix_mode = kwargs.get("mix_mode", "linear_sum")
+        track_length_master = int(kwargs.get("track_length_master", "0"))
         pad_mode = kwargs.get("pad_mode", "zero_fill")
         auto_normalize = kwargs.get("auto_normalize", False)
         mix_vol_preset_overrides = kwargs.get("mix_vol_preset_overrides", "none")
@@ -2667,20 +2673,21 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                     target_ch = min(2, max_ch)
         # dbg-text always
         dbg_parts = [
-            f"enable_mux: {enable_mux}",
-            f"mute_all: {mute_all}",
-            f"mix_mode: {mix_mode}",
-            f"pad_mode: {pad_mode}",
-            f"auto_normalize: {auto_normalize}",
-            f"mix_vol_preset_overrides: {mix_vol_preset_overrides}",
-            f"Vols dB: [{', '.join(f'{v:.1f}' for v in vols)}]",
-    f"Audio-Enabled: {enables}",
-    f"Mutes: {mutes}",
-            f"Solo channel: {solo_channel}",
-            f"resample_mode: {resample_mode}",
-            f"stereoize_delay_ms: {stereoize_delay_ms}, headroom_db: {stereoize_headroom_db:.1f}",
-            f"Active indices: {active_indices}",
-            f"Target ch: {target_ch}",
+            f"- enable_mux: {enable_mux}",
+            f"- mute_all: {mute_all}",
+            f"- mix_mode: {mix_mode}",
+            f"- pad_mode: {pad_mode}",
+            f"- auto_normalize: {auto_normalize}",
+            f"- mix_vol_preset_overrides: {mix_vol_preset_overrides}",
+            f"- Vols dB: [{', '.join(f'{v:.1f}' for v in vols)}]",
+            f"- Audio-Enabled: {enables}",
+            f"- Mutes: {mutes}",
+            f"- Solo channel: {solo_channel}",
+            f"- resample_mode: {resample_mode}",
+            f"- stereoize_delay_ms: {stereoize_delay_ms}, headroom_db: {stereoize_headroom_db:.1f}",
+            f"- Active indices: {active_indices}",
+            f"- Final Track: {'mono' if target_ch == 1 else 'stereo'}",
+            f"- Preproc params: rms_t={target_rms_db:.1f}dB peak_t={target_peak_db:.1f}dB pre_g={pre_mix_gain_db:.1f}dB len_m={track_length_master} pad={pad_mode}",
         ]
         for i in range(5):
             if audios[i] is not None:
@@ -2688,7 +2695,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 info = f"sr={a['sample_rate']} C={a['waveform'].shape[1]} T={a['waveform'].shape[2]}"
             else:
                 info = "None"
-            dbg_parts.append(f"Audio{i+1}: {info}")
+            dbg_parts.append(f"- Audio{i+1}: {info}")
         base_dbg = "\n".join(dbg_parts)
         process_details = ""
         enabled_prefix = "** Enabled **\n" if enable_mux else ""
@@ -2718,6 +2725,11 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 zero_stereo = zero_multi.repeat(1, 2, 1)
             else:
                 zero_stereo = zero_multi[:, :2, :]
+
+            master_vol_db = kwargs.get("master_vol_db", 0.0)
+            master_lin = 10 ** (master_vol_db / 20.0)
+            zero_multi *= master_lin
+            zero_stereo *= master_lin
             dummy_audio_mono = {"waveform": zero_multi, "sample_rate": sr}
             dummy_audio_stereo = {"waveform": zero_stereo, "sample_rate": sr}
             if enable_save and file_prefix:
@@ -2747,8 +2759,8 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 w_stereo = dummy_audio_stereo["waveform"].squeeze(0)
                 torchaudio.save(stereo_fn, w_stereo, dummy_audio_stereo["sample_rate"], format=save_format)
                 full_stereo = os.path.abspath(stereo_fn)
-                dbg_parts.append(f"Saved mono: {full_mono}")
-                dbg_parts.append(f"Saved stereo: {full_stereo}")
+                dbg_parts.append(f"- Saved mono: {full_mono}")
+                dbg_parts.append(f"- Saved stereo: {full_stereo}")
             dbg_text = enabled_prefix + "\n".join(dbg_parts)
             return (dummy_audio_mono, dummy_audio_stereo, dbg_text, {"sox_params": current_params})
         # Get target_sr, dtype, device from first active
@@ -2758,11 +2770,17 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         first_wave = first_audio["waveform"][0:1]
         dtype = first_wave.dtype
         device = first_wave.device
+        orig_channels = [audios[i]["waveform"].shape[1] for i in active_indices]
+        orig_srs = [audios[i]["sample_rate"] for i in active_indices]
+        orig_lens = [audios[i]["waveform"].shape[2] for i in active_indices]
         # Resample all active to multi-ch, upmix if needed, collect
         resampled_multis = []
         resample_msgs = []
-        for i in active_indices:
+        for j, i in enumerate(active_indices):
             audio_i = audios[i]
+            orig_sr = orig_srs[j]
+            orig_ch = orig_channels[j]
+            orig_len = orig_lens[j]
             w = audio_i["waveform"][0:1]
             sr_i = audio_i["sample_rate"]
             orig_c = w.shape[1]
@@ -2780,20 +2798,52 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                         w = w.repeat(1, target_ch, 1)
                 else:
                     w = w[:, :target_ch, :]
-            if orig_c == 1 and target_ch == 2:
-                resample_msgs.append(f"audio-{i+1}: resampled (mono -> stereo)")
-            if orig_c > 1 and target_ch == 1:
-                resample_msgs.append(f"audio-{i+1}: resampled (stereo -> mono)")
             if sr_i != target_sr:
                 resampler = torchaudio.transforms.Resample(sr_i, target_sr)
                 w = resampler(w)
+
+            new_len = w.shape[2]
+            orig_dur_str = f"{orig_len / orig_sr:.1f}s" if orig_sr > 0 else "0s"
+            new_dur_str = f"{new_len / target_sr:.1f}s"
+            ch_action = ""
+            if orig_ch != target_ch:
+                if target_ch == 1:
+                    ch_action = "stereo->mono"
+                elif orig_ch == 1:
+                    ch_action = "mono->stereo"
+                else:
+                    ch_action = ">2ch-slice"
+            sr_action = " SR-resamp" if sr_i != target_sr else ""
+            msg = f"- Track-{i+1}: {orig_sr}/{orig_ch}/{orig_dur_str} -> {target_sr}/{target_ch}/{new_dur_str} ({ch_action}{sr_action})"
+            resample_msgs.append(msg)
             w = w.to(device=device, dtype=dtype)
             resampled_multis.append((i, w))
         resample_dbg = "\n".join(resample_msgs) if resample_msgs else ""
+        # Master length trim (post-resample, pre-balance/pad)
+        master_len = None
+        trim_msgs = []
+        if track_length_master > 0 and active_indices:
+            master_idx = track_length_master - 1
+            if master_idx in active_indices:
+                for orig_i_pos, w_pos in resampled_multis:
+                    if orig_i_pos == master_idx:
+                        master_len = w_pos.shape[2]
+                        break
+        trim_info = ""
+        if master_len is not None:
+            for j in range(len(resampled_multis)):
+                orig_i, w = resampled_multis[j]
+                if w.shape[2] > master_len:
+                    resampled_multis[j] = (orig_i, w[:, :, :master_len])
+                    trim_msgs.append(f"Track-{orig_i+1}")
+            if trim_msgs:
+                trim_info = f"- Trim to track{track_length_master} ({master_len/target_sr:.1f}s): {', '.join(trim_msgs)}"
         auto_dbg = ""
         if auto_vol_balance and resampled_multis:
             measured = []
             deltas = []
+            suggestions = []
+            type_sugs = []
             metric = None
             target = None
             current_linear_vols = [10 ** (v / 20.0) for v in vols]  # Post-preset snapshot
@@ -2805,6 +2855,17 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                     post_vol_multi = w_multi * vol_lin
                     rms = torch.sqrt(torch.mean(post_vol_multi ** 2))
                     measured_db = 20 * torch.log10(torch.clamp(rms, min=1e-8)).item()
+                    peak_val = torch.max(torch.abs(post_vol_multi))
+                    peak_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
+                    crest_db = peak_db - measured_db
+                    if crest_db > 12:
+                        sug = "Sample-accurate"
+                    elif orig_channels[j] >= 4:
+                        sug = "Absonic"
+                    else:
+                        sug = "Standard"
+                    suggestions.append(f"track{i_idx+1}:{sug} (crest:{crest_db:.1f}dB,ch:{orig_channels[j]})")
+                    type_sugs.append(sug)
                     delta_db = target - measured_db
                     vols[i_idx] += delta_db
                     measured.append("{:.1f}".format(measured_db))
@@ -2834,8 +2895,19 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 for j, (i_idx, w_multi) in enumerate(resampled_multis):
                     vol_lin = current_linear_vols[i_idx]
                     post_vol_multi = w_multi * vol_lin
+                    rms = torch.sqrt(torch.mean(post_vol_multi ** 2))
+                    rms_db = 20 * torch.log10(torch.clamp(rms, min=1e-8)).item()
                     peak_val = torch.max(torch.abs(post_vol_multi))  # core change
-                    peak_db = 20 * torch.log10(torch.clamp(peak_val + 1e-10, min=1e-8)).item()
+                    peak_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
+                    crest_db = peak_db - rms_db
+                    if crest_db > 12:
+                        sug = "Sample-accurate"
+                    elif orig_channels[j] >= 4:
+                        sug = "Absonic"
+                    else:
+                        sug = "Standard"
+                    suggestions.append(f"track{i_idx+1}:{sug} (crest:{crest_db:.1f}dB,ch:{orig_channels[j]})")
+                    type_sugs.append(sug)
                     delta_db = target - peak_db
                     vols[i_idx] += delta_db
                     measured.append(f"{peak_db:.1f}")
@@ -2859,7 +2931,15 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
 
             if metric is not None:
                 linear_vols = [10 ** (v / 20.0) for v in vols]  # Updated after deltas
-                auto_dbg = f"Auto Vol Balance: True | {metric} Target: {target:.1f}dB | Measured (post-vol full) {metric} dB: [{', '.join(measured)}] | Deltas dB: [{', '.join(deltas)}]"
+                auto_dbg = f"- Auto Vol Balance: True | {metric} Target: {target:.1f}dB | Measured (post-vol full) {metric} dB: [{', '.join(measured)}] | Deltas dB: [{', '.join(deltas)}]" + (f" | Type suggestions: [{', '.join(suggestions)}]" if suggestions else "")
+                # Apply "Auto" track types using analysis (req. auto_vol_balance)
+                auto_applied_count = 0
+                if mix_mode in ["rms_power", "max_amplitude"]:
+                    for j, orig_i in enumerate(active_indices):
+                        if track_types[orig_i] == "Auto":
+                            track_types[orig_i] = type_sugs[j]
+                            auto_applied_count += 1
+                auto_applied_str = f" (auto-applied:{auto_applied_count})" if auto_applied_count > 0 else ""
         # max_len after resample
         max_len = max(wm.shape[2] for _, wm in resampled_multis)
         # Pad, vol, list
@@ -2895,8 +2975,12 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         headroom_lin = 10 ** (pre_mix_gain_db / 20.0)
         for padded in padded_list:
             padded *= headroom_lin
+        # Fallback "Auto" to "Standard" if no analysis done
+        for i_idx in active_indices:
+            if track_types[i_idx] == "Auto":
+                track_types[i_idx] = "Standard"
         active_types = [track_types[i] for i in active_indices]
-        if mix_mode == "rms_power" and len(padded_list) > 0:
+        if mix_mode in ["rms_power", "max_amplitude"] and len(padded_list) > 0:
             standard = []
             absonic = []
             sample_acc = []
@@ -2919,9 +3003,10 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 absonic_sum /= len(absonic) ** 0.5
             sample_mix = torch.max(torch.stack(sample_acc), dim=0)[0] if sample_acc else torch.zeros(zero_shape, dtype=dtype_, device=device)
             mixed_multi = standard_sum + absonic_sum + sample_mix
-            type_counts = f"rms_power types: Std:{len(standard)} Ab:{len(absonic)} Sa:{len(sample_acc)}"
+            used_types_str = ", ".join([f"track{active_indices[j]+1}:{active_types[j]}" for j in range(len(active_types))])
+            type_counts = f"{mix_mode} types: Std:{len(standard)} Ab:{len(absonic)} Sa:{len(sample_acc)}"
             absonic_note = f" (Absonic sliced to {target_ch}ch; full B-format needs multi-ch)" if absonic and target_ch < 4 else ""
-            type_info = type_counts + absonic_note
+            type_info = f"- Used: [{used_types_str}] | {type_counts}{absonic_note}{auto_applied_str}"
         else:
             stacked = torch.stack(padded_list, dim=0)
             if mix_mode == "linear_sum":
@@ -2939,12 +3024,17 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 mixed_multi *= (10 ** (-1 / 20)) / peak
         mixed_multi = torch.tanh(mixed_multi * 1.25) / 1.25
         post_peak = torch.max(torch.abs(mixed_multi)).item()
-        process_details = ((resample_dbg + "\n" if resample_dbg else "") + auto_dbg + (f"\n{type_info}" if type_info else "")) + f"\nUsed torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
+        process_details = ((resample_dbg + "\n" if resample_dbg else "") + auto_dbg + (f"\n{trim_info}" if trim_info else "") + (f"\n{type_info}" if type_info else "")) + f"\n- Used torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
         mixed_mono = torch.mean(mixed_multi, dim=1, keepdim=True)
         if mixed_multi.shape[1] == 1:
             mixed_stereo = mixed_mono.repeat(1, 2, 1)
         else:
             mixed_stereo = mixed_multi[:, :2, :]
+
+        master_vol_db = kwargs.get("master_vol_db", 0.0)
+        master_lin = 10 ** (master_vol_db / 20.0)
+        mixed_mono *= master_lin
+        mixed_stereo *= master_lin
         audio_mono = {"waveform": mixed_mono, "sample_rate": target_sr}
         audio_stereo = {"waveform": mixed_stereo, "sample_rate": target_sr}
         if enable_save and file_prefix:

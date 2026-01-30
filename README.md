@@ -54,3 +54,9 @@ Silly me... I just realized that many sox effect are already implemented in torc
 
 Enable process_modes for node and do equivalent for SoX effect using torch-audio if possible.
 
+## Help...
+
+- Please report issues, suggest features, or ask questions on the GitHub repository.
+- Join the discussion and share your experiences with the community.
+- Contribute to the project by submitting pull requests or improving documentation.
+

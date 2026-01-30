@@ -1,6 +1,6 @@
 [project]
-name = "comfyui-sox-effects"
-version = "0.1.0"
+name = "comfyui_SoX_Effects"
+version = "0.1.1"
 description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [

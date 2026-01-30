@@ -2510,12 +2510,12 @@ Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
             "stereoize_delay_ms": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1, "tooltip": """Haas delay ms (0-20): Right ch delayed by ~N samples (sr/1000); left end-pad match len. 0=repeat both ch; 10-20ms stereo width."""}),
             "stereoize_headroom": ("FLOAT", {"default": -3.0, "min": -7.0, "max": 0.0, "step": 0.1, "tooltip": """Pre-upmix gain drop dB (-7..0): Attenuate mono →stereo sum headroom (~+6dB incoherent). -3dB default safe."""}),
             "═══ MIX MODE ═══": ("STRING", {"default": "", "tooltip": "Mix mode and balance group"}),
-            "mix_mode": (["linear_sum", "average", "rms_power", "max_amplitude"], {"default": "linear_sum"}),
+            "mix_mode": (["linear_sum", "average", "rms_power", "max_amplitude"], {"default": "linear_sum", "tooltip": "linear_sum/rms_power/max_amplitude: coherent voltage SUM (fixed, real DAW mix, rec.); average: arithmetic mean."}),
             "mix_vol_preset_overrides": (["none", "equal", "vocals_lead", "bass_heavy", "wide_stereo"], {"default": "none", "tooltip": """Volume preset overrides (overrides vol_1-5 sliders):\nnone: use sliders\n equal: [0.0, 0.0, 0.0, 0.0, 0.0]\nvocals_lead: [3.5, -3.1, -3.1, -6.0, -6.0]\nbass_heavy: [-2.0, 1.6, 0.0, -0.9, -0.9]\nwide_stereo: [0.0, 0.0, -2.0, -2.0, 1.6]"""}),
             "−−− AUTO VOL BALANCE −−−": ("STRING", {"default": "", "tooltip": "Auto volume balance group"}),
             "auto_vol_balance": ("BOOLEAN", {"default": False, "tooltip": "Auto-adjust `vol_n` dB to target metric (torch only, post-resample, after presets)"}),
-            "target_rms_db": ("FLOAT", {"default": -18.0, "min": -60.0, "max": -6.0, "step": 0.5, "tooltip": "RMS target dB for rms_power mode"}),
-            "target_peak_db": ("FLOAT", {"default": -6.0, "min": -20.0, "max": 0.0, "step": 0.5, "tooltip": "Peak target dBFS for max_amplitude mode (headroom)"}),
+            "target_rms_db": ("FLOAT", {"default": -20.0, "min": -60.0, "max": -6.0, "step": 0.5, "tooltip": "RMS target dBFS per-track pre-mix (-20dB rec. for headroom with multiple coherent tracks); rms_power mode."}),
+            "target_peak_db": ("FLOAT", {"default": -9.0, "min": -20.0, "max": 0.0, "step": 0.5, "tooltip": "Peak target dBFS per-track pre-mix for max_amplitude mode (-9dB rec. headroom); now uses coherent voltage sum."}),
             "pad_mode": (["zero_fill", "loop_repeat", "fade_trim"], {"default": "zero_fill"}),
             "auto_normalize": ("BOOLEAN", {"default": True, "tooltip": "Post-mix peak normalize to -1dB headroom + clamp <=1.0 (default: on, prevents clipping/distortion)"}),
             "pre_mix_gain_db": ("FLOAT", {"default": -3.0, "min": -12.0, "max": 3.0, "step": 0.1, "tooltip": "Pre-mix gain reduction dB (headroom; negative reduces gain pre-mix/effects to prevent clipping)."}),
@@ -2531,6 +2531,10 @@ Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
             optional[f"enable_audio_{i+1}"] = ("BOOLEAN", {"default": True})
             optional[f"vol_{i+1}"] = ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1})
             optional[f"mute_{i+1}"] = ("BOOLEAN", {"default": False})
+            optional[f"track_type_{i+1}"] = (["Standard", "Absonic", "Sample-accurate"], {"default": "Standard", "tooltip": """Track Type (rms_power mixing only):
+- Standard: coherent voltage sum (default, music/instrument/vocal stems)
+- Absonic: coherent sum, sqrt(N)-weight if multiple (spatial/Ambisonics/immersive; sliced to stereo)
+- Sample-accurate: sample-wise MAX (experimental/glitch/granular/phase-critical)"""})
             optional[f"in-audio-{i+1}"] = ("AUDIO",)
         return {"optional": optional}
 
@@ -2607,6 +2611,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         if solo_channel != "none":
             solos[int(solo_channel) - 1] = True
         enables = [kwargs.get(f"enable_audio_{i+1}", True) for i in range(5)]
+        track_types = [kwargs.get(f"track_type_{i+1}", "Standard") for i in range(5)]
         any_solo = solo_channel != "none"
         audios = [kwargs.get(f"in-audio-{i+1}", None) for i in range(5)]
         mix_mode = kwargs.get("mix_mode", "linear_sum")
@@ -2890,24 +2895,51 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         headroom_lin = 10 ** (pre_mix_gain_db / 20.0)
         for padded in padded_list:
             padded *= headroom_lin
-        # Stack and mix
-        stacked = torch.stack(padded_list, dim=0)
-        if mix_mode == "linear_sum":
-            mixed_multi = torch.sum(stacked, dim=0)
-        elif mix_mode == "average":
-            mixed_multi = torch.mean(stacked, dim=0)
-        elif mix_mode == "rms_power":
-            N = stacked.shape[0]
-            mixed_multi = torch.sqrt(torch.sum(stacked ** 2, dim=0) / N)
-        elif mix_mode == "max_amplitude":
-            mixed_multi = torch.max(stacked, dim=0)[0]
+        active_types = [track_types[i] for i in active_indices]
+        if mix_mode == "rms_power" and len(padded_list) > 0:
+            standard = []
+            absonic = []
+            sample_acc = []
+            for j, orig_i in enumerate(active_indices):
+                typ = track_types[orig_i]
+                if typ == "Standard":
+                    standard.append(padded_list[j])
+                elif typ == "Absonic":
+                    absonic.append(padded_list[j])
+                else:  # Sample-accurate
+                    sample_acc.append(padded_list[j])
+            target_ch = padded_list[0].shape[1]
+            max_len = padded_list[0].shape[2]
+            device = padded_list[0].device
+            dtype_ = padded_list[0].dtype
+            zero_shape = (1, target_ch, max_len)
+            standard_sum = torch.sum(torch.stack(standard), dim=0) if standard else torch.zeros(zero_shape, dtype=dtype_, device=device)
+            absonic_sum = torch.sum(torch.stack(absonic), dim=0) if absonic else torch.zeros(zero_shape, dtype=dtype_, device=device)
+            if len(absonic) > 1:
+                absonic_sum /= len(absonic) ** 0.5
+            sample_mix = torch.max(torch.stack(sample_acc), dim=0)[0] if sample_acc else torch.zeros(zero_shape, dtype=dtype_, device=device)
+            mixed_multi = standard_sum + absonic_sum + sample_mix
+            type_counts = f"rms_power types: Std:{len(standard)} Ab:{len(absonic)} Sa:{len(sample_acc)}"
+            absonic_note = f" (Absonic sliced to {target_ch}ch; full B-format needs multi-ch)" if absonic and target_ch < 4 else ""
+            type_info = type_counts + absonic_note
+        else:
+            stacked = torch.stack(padded_list, dim=0)
+            if mix_mode == "linear_sum":
+                mixed_multi = torch.sum(stacked, dim=0)
+            elif mix_mode == "average":
+                mixed_multi = torch.mean(stacked, dim=0)
+            elif mix_mode == "rms_power":
+                mixed_multi = torch.sum(stacked, dim=0)  # fallback coherent sum
+            elif mix_mode == "max_amplitude":
+                mixed_multi = torch.sum(stacked, dim=0)  # coherent sum
+            type_info = ""
         peak = torch.max(torch.abs(mixed_multi)).item()
         if auto_normalize:
             if peak > 1e-8:
                 mixed_multi *= (10 ** (-1 / 20)) / peak
         mixed_multi = torch.tanh(mixed_multi * 1.25) / 1.25
         post_peak = torch.max(torch.abs(mixed_multi)).item()
-        process_details = (resample_dbg + "\n" if resample_dbg else "") + auto_dbg + f"\nUsed torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
+        process_details = ((resample_dbg + "\n" if resample_dbg else "") + auto_dbg + (f"\n{type_info}" if type_info else "")) + f"\nUsed torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
         mixed_mono = torch.mean(mixed_multi, dim=1, keepdim=True)
         if mixed_multi.shape[1] == 1:
             mixed_stereo = mixed_mono.repeat(1, 2, 1)

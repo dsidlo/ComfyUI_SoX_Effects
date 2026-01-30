@@ -7,6 +7,7 @@ import torchaudio
 import numpy as np
 import uuid
 import re
+import shutil
 from PIL import Image
 
 class SoxApplyEffectsNode:
@@ -975,18 +976,21 @@ class SoxSpectrogramNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio": ("AUDIO",),
                 "enable_spectrogram": ("BOOLEAN", {"default": True, "tooltip": "Enable spectrogram generation"}),
             },
             "optional": {
+                "audio-0": ("AUDIO", {"tooltip": "Audio input 0 for spectrogram (mono auto→stereo)."}),
+                "audio-1": ("AUDIO", {"tooltip": "Audio input 1 for spectrogram (mono auto→stereo)."}),
+                "audio-2": ("AUDIO", {"tooltip": "Audio input 2 for spectrogram (mono auto→stereo)."}),
+                "audio-3": ("AUDIO", {"tooltip": "Audio input 3 for spectrogram (mono auto→stereo)."}),
                 "prev_params": ("SOX_PARAMS",),
-                "enable_x_pixels": ("BOOLEAN", {"default": True, "tooltip": "Enable -X option"}),
+                "enable_x_pixels": ("BOOLEAN", {"default": False, "tooltip": "Enable -X option"}),
                 "x_pixels": ("INT", {"default": 800, "min": 100, "max": 200000, "step": 10, "tooltip": "X-axis pixels (100-200000, def 800)"}),
-                "enable_y_pixels": ("BOOLEAN", {"default": True, "tooltip": "Enable -Y option"}),
+                "enable_y_pixels": ("BOOLEAN", {"default": False, "tooltip": "Enable -Y option"}),
                 "y_pixels": ("INT", {"default": 257, "min": 50, "max": 2000, "step": 1, "tooltip": "Y per channel (def 257=2^8+1)"}),
-                "enable_Y_height": ("BOOLEAN", {"default": True, "tooltip": "Enable Y height resize"}),
+                "enable_Y_height": ("BOOLEAN", {"default": False, "tooltip": "Enable Y height resize"}),
                 "Y_height": ("INT", {"default": 550, "min": 100, "max": 2000, "tooltip": "Total Y height (def 550)"}),
-                "enable_z_range": ("BOOLEAN", {"default": True, "tooltip": "Enable -z option"}),
+                "enable_z_range": ("BOOLEAN", {"default": False, "tooltip": "Enable -z option"}),
                 "z_range": ("INT", {"default": 120, "min": 20, "max": 180, "tooltip": "Z dB range (def 120)"}),
                 "enable_q_quant": ("BOOLEAN", {"default": True, "tooltip": "Enable -q option"}),
                 "q_quant": ("INT", {"default": 249, "min": 2, "max": 256, "tooltip": "Colors (def 249)"}),
@@ -1000,50 +1004,85 @@ class SoxSpectrogramNode:
                 "window_type": (["hann", "hamming", "bartlett", "rectangular", "kaiser", "dolph"], {"default": "hann", "tooltip": "-w"}),
                 "enable_window_adj": ("BOOLEAN", {"default": True, "tooltip": "Enable -W option"}),
                 "window_adj": ("FLOAT", {"default": 0.0, "min": -10.0, "max": 10.0, "step": 0.1, "tooltip": "-W"}),
-                "title_text": ("STRING", {"default": "", "tooltip": "-t"}),
+                "title_text": ("STRING", {"default": "", "tooltip": "Base title text; auto-appended `[Mono|Stereo Audio-n]` per-input histogram."}),
                 "comment_text": ("STRING", {"default": "", "tooltip": "-c"}),
-                "png_prefix": ("STRING", {"default": "", "tooltip": "-o PNG filename prefix (saves to cwd with batch index if non-empty)"}),
+                " === Save Spectrogram File ===": ("STRING", {"default": "", "tooltip": "Set the png_prefix to output/spectro-images/<your-file-name>"}),
+                "png_prefix": ("STRING", {"default": "", "tooltip": "-o PNG prefix: saves `{png_prefix}_audio-n_{b:03d}.png` per-input/batch to cwd (target dir auto-created if missing)."}),
             }
         }
     RETURN_TYPES = ("AUDIO", "IMAGE", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "image", "sox_params", "dbg-text")
+    RETURN_NAMES = ("audio", "image", "sox_params", "dbg-text")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Utilities"
-    DESCRIPTION = "Spectrogram node generates image from audio. dbg-text `string`: 'parameters: <spectrogram options>\\n\\ncommand: <simulated sox cmds>' always (pre-execute, survives errors/disabled)."
+    DESCRIPTION = """Spectrogram node: Native unaltered `IMAGE`(s) from up to 4 `audio-0`..`audio-3` (SoX PNG→torch uint8 IMAGE, no resize; multi: batched [N,H_native~257,W_native~512-800,3] grid preview).
+    
+- Per-input: mono auto→stereo remix; title `[Mono|Stereo Audio-n]`.
+    
+- dbg-text: params + sim cmds; **errors logged**.
+    
+- PNG: `{png_prefix}_audio-n_{b:03d}.png` cwd (prefix).
+    
+Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
 
-    def process(
-        self,
-        audio,
-        enable_spectrogram=True,
-        prev_params=None,
-        enable_x_pixels=True,
-        x_pixels=800,
-        enable_y_pixels=True,
-        y_pixels=257,
-        enable_Y_height=True,
-        Y_height=550,
-        enable_z_range=True,
-        z_range=120,
-        enable_q_quant=True,
-        q_quant=249,
-        monochrome=False,
-        high_color=False,
-        light_bg=False,
-        no_axis=False,
-        raw_spec=False,
-        slack=False,
-        enable_window_type=True,
-        window_type="hann",
-        enable_window_adj=True,
-        window_adj=0.0,
-        title_text="",
-        comment_text="",
-        png_prefix="",
-    ):
+    def process(self, **kwargs):
+        # Extract params from kwargs
+        enable_spectrogram = kwargs.get("enable_spectrogram", True)
+        prev_params = kwargs.get("prev_params", None)
+        enable_x_pixels = kwargs.get("enable_x_pixels", True)
+        x_pixels = kwargs.get("x_pixels", 800)
+        enable_y_pixels = kwargs.get("enable_y_pixels", True)
+        y_pixels = kwargs.get("y_pixels", 257)
+        enable_Y_height = kwargs.get("enable_Y_height", True)
+        Y_height = kwargs.get("Y_height", 550)
+        enable_z_range = kwargs.get("enable_z_range", True)
+        z_range = kwargs.get("z_range", 120)
+        enable_q_quant = kwargs.get("enable_q_quant", True)
+        q_quant = kwargs.get("q_quant", 249)
+        monochrome = kwargs.get("monochrome", False)
+        high_color = kwargs.get("high_color", False)
+        light_bg = kwargs.get("light_bg", False)
+        no_axis = kwargs.get("no_axis", False)
+        raw_spec = kwargs.get("raw_spec", False)
+        slack = kwargs.get("slack", False)
+        enable_window_type = kwargs.get("enable_window_type", True)
+        window_type = kwargs.get("window_type", "hann")
+        enable_window_adj = kwargs.get("enable_window_adj", True)
+        window_adj = kwargs.get("window_adj", 0.0)
+        title_text = kwargs.get("title_text", "")
+        comment_text = kwargs.get("comment_text", "")
+        png_prefix = kwargs.get("png_prefix", "")
         current_params = prev_params["sox_params"] if prev_params is not None else []
-        sr = audio["sample_rate"]
-        waveform = audio["waveform"]
-        B = waveform.shape[0]
+
+        # Single audio input handling
+        audios_for_spec = []
+        audio_out = None
+        for n_str in ["0", "1", "2", "3"]:
+            audio_n = kwargs.get(f"audio-{n_str}", None)
+            if audio_n is not None:
+                if audio_out is None:
+                    # First non-None for passthrough AUDIO out (stereoized)
+                    w_out = audio_n["waveform"][0:1]
+                    orig_ch_out = w_out.shape[1]
+                    if orig_ch_out == 1:
+                        w_out = w_out.repeat(1, 2, 1)
+                    else:
+                        w_out = w_out[:, :2, :]
+                    audio_out = {"waveform": w_out, "sample_rate": audio_n["sample_rate"]}
+                # Per-input spec prep (stereoized)
+                w_spec = audio_n["waveform"][0:1]
+                orig_ch_spec = w_spec.shape[1]
+                ch_type = "Mono" if orig_ch_spec == 1 else "Stereo"
+                if orig_ch_spec == 1:
+                    w_spec = w_spec.repeat(1, 2, 1)
+                else:
+                    w_spec = w_spec[:, :2, :]
+                label = f"audio-{n_str}"
+                audios_for_spec.append((label, {"waveform": w_spec, "sample_rate": audio_n["sample_rate"]}, ch_type, n_str))
+        if audio_out is None:
+            dummy_w = torch.zeros((1, 2, 44100), dtype=torch.float32)  # stereo dummy
+            audio_out = {"waveform": dummy_w, "sample_rate": 44100}
+
 
         # Build options
         options = []
@@ -1071,109 +1110,143 @@ class SoxSpectrogramNode:
             options += ["-w", window_type]
         if enable_window_adj:
             options += ["-W", str(window_adj)]
-        if enable_Y_height:
-            options += ["-Y", str(Y_height)]
-        if title_text.strip():
-            options += ["-t", title_text]
+        # if enable_Y_height:  # Disabled: conflicts with -y; resize handles total stack height
+        #     options += ["-Y", str(Y_height)]
         if comment_text.strip():
             options += ["-c", comment_text]
         debug_str = shlex.join(["spectrogram"] + options)
         
-        # Simulate potential sox commands for dbg-text (always)
-        cmds = []
-        for i in range(B):
-            input_path = f"/tmp/input_{i:03d}.wav"
-            proc_path = f"/tmp/processed_{i:03d}.wav"
-            out_path = f"/tmp/output_{i:03d}.wav"
-            png_path = f"{png_prefix.strip()}_{i:03d}.png" if png_prefix.strip() else f"temp_{i:03d}.png"
-            if current_params:
-                cmds.append(shlex.join(["sox", input_path, proc_path] + current_params))
-            spec_input = proc_path if current_params else input_path
-            cmds.append(shlex.join(["sox", spec_input, out_path, "spectrogram"] + options + ["-o", png_path]))
-        cmd_str = "\n".join(cmds) if cmds else "No sox commands executed."
-        dbg_text = f"parameters: {debug_str}\n\ncommand: {cmd_str}"
+        # Simulate cmds per input/batch (always)
+        cmds_dbg = []
+        for label, audio_sp, _, _ in audios_for_spec:
+            waveform_sp = audio_sp["waveform"]
+            B_sp = waveform_sp.shape[0]
+            sr_sp = audio_sp["sample_rate"]
+            for b in range(B_sp):
+                input_p = f"/tmp/{label}_in_{b:03d}.wav"
+                proc_p = f"/tmp/{label}_proc_{b:03d}.wav"
+                png_p = f"{png_prefix.strip()}_{label}_{b:03d}.png" if png_prefix.strip() else f"/tmp/temp_{label}_{b:03d}.png"
+                if current_params:
+                    cmds_dbg.append(shlex.join(["sox", input_p, proc_p] + current_params))
+                spec_input = proc_p if current_params else input_p
+                cmds_dbg.append(shlex.join(["sox", spec_input, "-n", "spectrogram"] + options + ["-o", png_p]))
+        dbg_text = f"parameters: {debug_str}\n" + '' if cmds_dbg else f"parameters: {debug_str}\n ** No audio for spectrogram. **\n"
+        all_images = []
+        saved_msgs = []
+        errors = []
         
         # Prepare audio_out and image_out
 
 
         # Prepare audio_out and image_out
-        if not enable_spectrogram:
-            audio_out = audio
-            H = Y_height
-            W = x_pixels
-            image_out = torch.zeros((B, H, W, 3), dtype=torch.float32)
+        if not enable_spectrogram or len(audios_for_spec) == 0:
+            image_out = torch.zeros((1, 257, 800, 3), dtype=torch.uint8)
         else:
+            # Spectrogram generation
             # 1. Apply prev_params to get processed_waveform
-            processed_waveforms = []
-            for i in range(B):
-                single_waveform = waveform[i]
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                    input_path = temp_input.name
-                    torchaudio.save(input_path, single_waveform, sr)
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
-                    output_path = temp_output.name
-                sox_cmd_params = current_params
-                if sox_cmd_params:
-                    cmd = ["sox", input_path, output_path] + sox_cmd_params
-                    try:
+            # Multi-input spectrogram gen
+            num_inputs = len(audios_for_spec)
+            all_images = []
+            saved_msgs = []
+            for label, audio_sp, ch_type, n_str in audios_for_spec:
+                waveform_sp = audio_sp["waveform"]
+                sr_sp = audio_sp["sample_rate"]
+                B_sp = waveform_sp.shape[0]
+                batch_imgs = []
+                for b in range(B_sp):
+                    w_b_2d = waveform_sp[b:b+1].squeeze(0)
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_in:
+                        input_path = tmp_in.name
+                        torchaudio.save(input_path, w_b_2d, sr_sp)
+                    spec_input_path = input_path
+                    output_path = None
+                    if current_params:
+                        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+                            output_path = tmp_out.name
+                        cmd = ["sox", input_path, output_path] + current_params
                         subprocess.run(cmd, check=True, capture_output=True, text=True)
-                        out_w, _ = torchaudio.load(output_path)
-                        processed_waveforms.append(out_w.squeeze(0) if out_w.dim() > 1 else out_w)
-                    except subprocess.CalledProcessError as e:
-                        os.remove(input_path)
-                        os.remove(output_path)
-                        raise RuntimeError(f"SoX prev_params failed: {e.stderr}")
-                else:
-                    processed_waveforms.append(single_waveform)
-                os.remove(input_path)
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-            max_samples = max(w.shape[-1] for w in processed_waveforms)
-            padded_processed = [torch.nn.functional.pad(w, (0, max_samples - w.shape[-1])) for w in processed_waveforms]
-            processed_waveform = torch.stack(padded_processed)
-
-            # 2. Apply spectrogram to processed
-            output_waveforms = []
-            image_tensors = []
-            for i in range(B):
-                single_waveform = processed_waveform[i]
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                    input_path = temp_input.name
-                    torchaudio.save(input_path, single_waveform, sr)
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
-                    output_path = temp_output.name
-                png_temp = True
-                if png_prefix.strip():
-                    png_path = f"{png_prefix.strip()}_{i:03d}.png"
-                    png_temp = False
-                else:
-                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_png:
-                        png_path = temp_png.name
-                cmd = ["sox", input_path, output_path, "spectrogram"] + options + ["-o", png_path]
-                try:
-                    subprocess.run(cmd, check=True, capture_output=True, text=True)
-                    out_w, _ = torchaudio.load(output_path)
-                    output_waveforms.append(out_w.squeeze(0) if out_w.dim() > 1 else out_w)
-                    im = Image.open(png_path)
-                    if enable_Y_height:
-                        im = im.resize((x_pixels, Y_height), Image.Resampling.LANCZOS)
-                    im = im.convert("RGB")
-                    arr = np.array(im).astype(np.float32) / 255.0
-                    img_t = torch.from_numpy(arr)
-                    image_tensors.append(img_t)
-                except subprocess.CalledProcessError as e:
-                    raise RuntimeError(f"Spectrogram sox failed: {e.stderr}")
-                finally:
-                    for p in [input_path, output_path]:
-                        if os.path.exists(p):
-                            os.remove(p)
-                    if png_temp and os.path.exists(png_path):
-                        os.remove(png_path)
-            max_samples_out = max(w.shape[-1] for w in output_waveforms)
-            padded_out = [torch.nn.functional.pad(w, (0, max_samples_out - w.shape[-1])) for w in output_waveforms]
-            audio_out_waveform = torch.stack(padded_out)
-            audio_out = {"waveform": audio_out_waveform, "sample_rate": sr}
-            image_out = torch.stack(image_tensors)
+                        spec_input_path = output_path
+                    
+                    png_path = f"/tmp/spec_{label}_{b:03d}_{uuid.uuid4().hex[:8]}.png"
+                    spec_cmd = ["sox", spec_input_path, "-n", "spectrogram"] + options + ["-o", png_path]
+                    dbg_text += "\ncli: " + " ".join(spec_cmd)
+                    try:
+                        subprocess.run(spec_cmd, check=True, capture_output=True, text=True)
+                    except subprocess.CalledProcessError:
+                        raise
+                    except Exception as e:
+                        errors.append(f"spec {label} b{b}: {str(e)}")
+                        batch_imgs.append(torch.zeros((1, 257, 800, 3), dtype=torch.uint8))
+                        continue  # skip this batch item
+                    
+                    # PNG exists (/tmp/png_path), load IMAGE first
+                    try:
+                        pil_img = Image.open(png_path)
+                        if pil_img.mode != "RGB":
+                            pil_img = pil_img.convert("RGB")
+                        img_np = np.array(pil_img)
+                        img_mean = img_np.mean().item()
+                        if img_mean < 10:
+                            errors.append(f"Dark spectrogram {label} b{b}: mean={img_mean:.1f} (silent/short audio?)")
+                        img_t = torch.from_numpy(img_np).to(torch.uint8).unsqueeze(0)
+                        batch_imgs.append(img_t)
+                        if png_prefix.strip():
+                            # Incremental filename sequence to avoid overwrites
+                            base_prefix = png_prefix.strip()
+                            dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}_{label}_000.png")) or '.'
+                            pattern = rf"^{re.escape(base_prefix)}_{re.escape(label)}_(\\d{{3}})\\\.png$"
+                            nums = []
+                            try:
+                                for f in os.listdir(dir_path):
+                                    m = re.match(pattern, f)
+                                    if m:
+                                        nums.append(int(m.group(1)))
+                            except OSError:
+                                pass
+                            next_seq = max(nums, default=0) + 1
+                            while True:
+                                save_png = f"{png_prefix.strip()}_{label}_{next_seq:03d}_{uuid.uuid4().hex[:8]}.png"
+                                save_path = os.path.abspath(save_png)
+                                if not os.path.exists(save_path):
+                                    break
+                                next_seq += 1
+                            try:
+                                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                                shutil.copy2(png_path, save_path)
+                                saved_msgs.append(f"Saved {save_path} (seq {next_seq:03d})")
+                            except Exception as e:
+                                errors.append(f"PNG copy fail {label} b{b}: {str(e)}")
+                    except Exception as e:
+                        errors.append(f"PIL {label} b{b}: {str(e)}")
+                        batch_imgs.append(torch.zeros((1, 257, 800, 3), dtype=torch.uint8))
+                    # Cleanup temps safely
+                    try:
+                        os.unlink(input_path)
+                    except OSError:
+                        pass
+                    if output_path:
+                        try:
+                            os.unlink(output_path)
+                        except OSError:
+                            pass
+                    if png_path.startswith("/tmp/"):
+                        try:
+                            os.unlink(png_path)
+                        except OSError:
+                            pass
+                stacked_b = torch.cat(batch_imgs, dim=0) if batch_imgs else torch.zeros((1, 257, 800, 3), dtype=torch.uint8)
+                all_images.append(stacked_b)
+                if errors:
+                    dbg_text += "\n\n**SoX Errors:**\n" + "\n".join(errors)
+        # Combine images as batch (native sizes, grid preview)
+        if len(all_images) == 0:
+            image_out = torch.zeros((1, 257, 800, 3), dtype=torch.uint8)
+        elif len(all_images) == 1:
+            image_out = all_images[0]
+        else:
+            image_out = torch.cat(all_images, dim=0)
+        if saved_msgs:
+            dbg_text += "\n" + "\n".join(saved_msgs)
 
         return (audio_out, image_out, {"sox_params": current_params}, dbg_text)
 
@@ -2267,10 +2340,10 @@ class SoxUtilMultiInputAudio5_1:
         return {"optional": optional}
 
     RETURN_TYPES = ("AUDIO", "AUDIO")
-    RETURN_NAMES = ("out-audio", "out-audio")
+    RETURN_NAMES = ("mono-audio", "stereo-audio")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Utilities"
-    DESCRIPTION = """Utility node: 5 optional `in-audio-0..4` → 2x `out-audio` (multi/target_ch mix + stereo).
+    DESCRIPTION = """Utility node: 5 optional `in-audio-0..4` → mono-audio + stereo-audio (multi/target_ch mix).
 
 `resample` (auto/mono/stereo) controls target_ch & per-input ch-resample (mono→stereo: stereoize_headroom dB drop + stereoize_delay ms widen first, pre-sum headroom):
 
@@ -2283,8 +2356,8 @@ Stereoize (mono→stereo upmix only):
 • `stereoize_delay` (0-20 ms): Right ch delay (Haas width); left end-pad to match len.
 
 SR resample→first (post-ch/stereoize); zero-pad shorts→longest; stack→mean(dim=0)→mix multi [1,C,T].
-- out-audio[0]: mix [1,C,T]
-- out-audio[1]: stereo derive [1,2,T] (dup/slice)
+- mono-audio: true mono downmix mean(dim=1) [1,1,T]
+- stereo-audio: stereo derive [1,2,T] (repeat/slice)
 
 Gains:
 - input_gain_0-4: per-input **post-ch/SR-resample/stereoize pre-pad/mix**
@@ -2329,11 +2402,12 @@ Empty → dummy zero [1,C,1024]@44.1kHz (C per resample; stereoize if stereo; ga
             else:
                 zero_multi = zero_base
             zero_multi *= master_lin
+            zero_mono = torch.mean(zero_multi, dim=1, keepdim=True)
             if zero_multi.shape[1] == 1:
-                zero_stereo = zero_multi.repeat(1, 2, 1)
+                zero_stereo = zero_mono.repeat(1, 2, 1)
             else:
                 zero_stereo = zero_multi[:, :2, :]
-            audio_mono = {"waveform": zero_multi, "sample_rate": sr}
+            audio_mono = {"waveform": zero_mono, "sample_rate": sr}
             audio_stereo = {"waveform": zero_stereo, "sample_rate": sr}
             return (audio_mono, audio_stereo)
 
@@ -2394,13 +2468,13 @@ Empty → dummy zero [1,C,1024]@44.1kHz (C per resample; stereoize if stereo; ga
 
         stacked = torch.stack(padded_ws, dim=0)
         mixed_multi = torch.mean(stacked, dim=0)
-        mixed_mono = mixed_multi
+        mixed_mono = torch.mean(mixed_multi, dim=1, keepdim=True)
 
-        # Stereo: duplicate if mono
-        if mixed_mono.shape[1] == 1:
+        # Stereo derive from multi mix
+        if mixed_multi.shape[1] == 1:
             mixed_stereo = mixed_mono.repeat(1, 2, 1)
         else:
-            mixed_stereo = mixed_mono[:, :2, :]
+            mixed_stereo = mixed_multi[:, :2, :]
 
         mixed_mono *= master_lin
         mixed_stereo *= master_lin
@@ -2427,7 +2501,7 @@ Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
             "stereoize_headroom": ("FLOAT", {"default": -3.0, "min": -7.0, "max": 0.0, "step": 0.1, "tooltip": """Pre-upmix gain drop dB (-7..0): Attenuate mono →stereo sum headroom (~+6dB incoherent). -3dB default safe."""}),
             "═══ MIX MODE ═══": ("STRING", {"default": "", "tooltip": "Mix mode and balance group"}),
             "mix_mode": (["linear_sum", "rms_power", "average", "max_amplitude"], {"default": "linear_sum"}),
-            "mix_preset": (["none", "equal", "vocals_lead", "bass_heavy", "wide_stereo"], {"default": "none"}),
+            "mix_vol_preset_overrides": (["none", "equal", "vocals_lead", "bass_heavy", "wide_stereo"], {"default": "none", "tooltip": """Volume preset overrides (overrides vol_1-5 sliders):\nnone: use sliders\n equal: [0.0, 0.0, 0.0, 0.0, 0.0]\nvocals_lead: [3.5, -3.1, -3.1, -6.0, -6.0]\nbass_heavy: [-2.0, 1.6, 0.0, -0.9, -0.9]\nwide_stereo: [0.0, 0.0, -2.0, -2.0, 1.6]"""}),
             "−−− AUTO VOL BALANCE −−−": ("STRING", {"default": "", "tooltip": "Auto volume balance group"}),
             "auto_vol_balance": ("BOOLEAN", {"default": False, "tooltip": "Auto-adjust `vol_n` dB to target metric (torch only, post-resample, after presets)"}),
             "target_rms_db": ("FLOAT", {"default": -18.0, "min": -60.0, "max": -6.0, "step": 0.5, "tooltip": "RMS target dB for rms_power mode"}),
@@ -2528,15 +2602,15 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         mix_mode = kwargs.get("mix_mode", "linear_sum")
         pad_mode = kwargs.get("pad_mode", "zero_fill")
         auto_normalize = kwargs.get("auto_normalize", False)
-        mix_preset = kwargs.get("mix_preset", "none")
+        mix_vol_preset_overrides = kwargs.get("mix_vol_preset_overrides", "none")
         preset_vols = {
             "equal": [0.0, 0.0, 0.0, 0.0, 0.0],
             "vocals_lead": [3.5, -3.1, -3.1, -6.0, -6.0],
             "bass_heavy": [-2.0, 1.6, 0.0, -0.9, -0.9],
             "wide_stereo": [0.0, 0.0, -2.0, -2.0, 1.6],
         }
-        if mix_preset != "none":
-            vols = preset_vols[mix_preset]
+        if mix_vol_preset_overrides != "none":
+            vols = preset_vols[mix_vol_preset_overrides]
         linear_vols = [10 ** (v / 20.0) for v in vols]
         prev_params = kwargs.get("prev_params", None)
         current_params = prev_params["sox_params"] if prev_params is not None else []
@@ -2583,7 +2657,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
             f"mix_mode: {mix_mode}",
             f"pad_mode: {pad_mode}",
             f"auto_normalize: {auto_normalize}",
-            f"mix_preset: {mix_preset}",
+            f"mix_vol_preset_overrides: {mix_vol_preset_overrides}",
             f"Vols dB: [{', '.join(f'{v:.1f}' for v in vols)}]",
     f"Audio-Enabled: {enables}",
     f"Mutes: {mutes}",
@@ -2671,6 +2745,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         device = first_wave.device
         # Resample all active to multi-ch, upmix if needed, collect
         resampled_multis = []
+        resample_msgs = []
         for i in active_indices:
             audio_i = audios[i]
             w = audio_i["waveform"][0:1]
@@ -2690,11 +2765,16 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                         w = w.repeat(1, target_ch, 1)
                 else:
                     w = w[:, :target_ch, :]
+            if orig_c == 1 and target_ch == 2:
+                resample_msgs.append(f"audio-{i+1}: resampled (mono -> stereo)")
+            if orig_c > 1 and target_ch == 1:
+                resample_msgs.append(f"audio-{i+1}: resampled (stereo -> mono)")
             if sr_i != target_sr:
                 resampler = torchaudio.transforms.Resample(sr_i, target_sr)
                 w = resampler(w)
             w = w.to(device=device, dtype=dtype)
             resampled_multis.append((i, w))
+        resample_dbg = "\n".join(resample_msgs) if resample_msgs else ""
         auto_dbg = ""
         if auto_vol_balance and resampled_multis:
             measured = []
@@ -2781,7 +2861,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 mixed_multi *= (10 ** (-1 / 20)) / peak
         mixed_multi = torch.tanh(mixed_multi * 1.25) / 1.25
         post_peak = torch.max(torch.abs(mixed_multi)).item()
-        process_details = auto_dbg + f"Used torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
+        process_details = (resample_dbg + "\n" if resample_dbg else "") + auto_dbg + f"\nUsed torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
         mixed_mono = torch.mean(mixed_multi, dim=1, keepdim=True)
         if mixed_multi.shape[1] == 1:
             mixed_stereo = mixed_mono.repeat(1, 2, 1)

@@ -2510,7 +2510,7 @@ Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
             "stereoize_delay_ms": ("INT", {"default": 0, "min": 0, "max": 20, "step": 1, "tooltip": """Haas delay ms (0-20): Right ch delayed by ~N samples (sr/1000); left end-pad match len. 0=repeat both ch; 10-20ms stereo width."""}),
             "stereoize_headroom": ("FLOAT", {"default": -3.0, "min": -7.0, "max": 0.0, "step": 0.1, "tooltip": """Pre-upmix gain drop dB (-7..0): Attenuate mono →stereo sum headroom (~+6dB incoherent). -3dB default safe."""}),
             "═══ MIX MODE ═══": ("STRING", {"default": "", "tooltip": "Mix mode and balance group"}),
-            "mix_mode": (["linear_sum", "rms_power", "average", "max_amplitude"], {"default": "linear_sum"}),
+            "mix_mode": (["linear_sum", "average", "rms_power", "max_amplitude"], {"default": "linear_sum"}),
             "mix_vol_preset_overrides": (["none", "equal", "vocals_lead", "bass_heavy", "wide_stereo"], {"default": "none", "tooltip": """Volume preset overrides (overrides vol_1-5 sliders):\nnone: use sliders\n equal: [0.0, 0.0, 0.0, 0.0, 0.0]\nvocals_lead: [3.5, -3.1, -3.1, -6.0, -6.0]\nbass_heavy: [-2.0, 1.6, 0.0, -0.9, -0.9]\nwide_stereo: [0.0, 0.0, -2.0, -2.0, 1.6]"""}),
             "−−− AUTO VOL BALANCE −−−": ("STRING", {"default": "", "tooltip": "Auto volume balance group"}),
             "auto_vol_balance": ("BOOLEAN", {"default": False, "tooltip": "Auto-adjust `vol_n` dB to target metric (torch only, post-resample, after presets)"}),
@@ -2807,15 +2807,51 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
             elif mix_mode == "max_amplitude":
                 metric = "Peak"
                 target = target_peak_db
+                # Junie recommended - Grok - Not recommended...
+                # No, this peak-based version does not make much sense as a
+                # general-purpose method for reviewing / balancing / gain-staging
+                # individual tracks before actual mixing — at least not in most
+                # modern (and even classic) mixing workflows.
+                # It is mathematically correct and runs without crashing,
+                # but it usually gives poor musical results compared to
+                # RMS / average-loudness / LUFS-style balancing.
+                # for j, (i_idx, w_multi) in enumerate(resampled_multis):
+                #     vol_lin = current_linear_vols[i_idx]
+                #     post_vol_multi = w_multi * vol_lin
+                #     peak_val = torch.max(torch.abs(post_vol_multi))
+                #     measured_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
+                #     delta_db = target - measured_db
+                #     vols[i_idx] += delta_db
+                #     measured.append("{:.1f}".format(measured_db))
+                #     deltas.append("{:.1f}".format(delta_db))
+
+                # Minimal clean / safer variant (recommended)
                 for j, (i_idx, w_multi) in enumerate(resampled_multis):
                     vol_lin = current_linear_vols[i_idx]
                     post_vol_multi = w_multi * vol_lin
-                    peak_val = torch.max(torch.abs(post_vol_multi))
-                    measured_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
-                    delta_db = target - measured_db
+                    peak_val = torch.max(torch.abs(post_vol_multi))  # core change
+                    peak_db = 20 * torch.log10(torch.clamp(peak_val + 1e-10, min=1e-8)).item()
+                    delta_db = target - peak_db
                     vols[i_idx] += delta_db
-                    measured.append("{:.1f}".format(measured_db))
-                    deltas.append("{:.1f}".format(delta_db))
+                    measured.append(f"{peak_db:.1f}")
+                    deltas.append(f"{delta_db:+.1f}")
+
+                # Even stricter safety version (prevents huge boosts on near-silent tracks)
+                # Python
+                # for j, (i_idx, w_multi) in enumerate(resampled_multis):
+                #     vol_lin = current_linear_vols[i_idx]
+                #     post_vol_multi = w_multi * vol_lin
+                #     peak_val = torch.max(torch.abs(post_vol_multi))
+                #     peak_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
+                #     if peak_db < -60:  # very quiet → most likely shouldn't get boosted massively
+                #         measured.append(f"{peak_db:.1f} (quiet)")
+                #         deltas.append("—")
+                #         continue
+                #     delta_db = target - peak_db
+                #     vols[i_idx] += delta_db
+                #     measured.append(f"{peak_db:.1f}")
+                #     deltas.append(f"{delta_db:+.1f}")
+
             if metric is not None:
                 linear_vols = [10 ** (v / 20.0) for v in vols]  # Updated after deltas
                 auto_dbg = f"Auto Vol Balance: True | {metric} Target: {target:.1f}dB | Measured (post-vol full) {metric} dB: [{', '.join(measured)}] | Deltas dB: [{', '.join(deltas)}]"
@@ -2858,11 +2894,11 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         stacked = torch.stack(padded_list, dim=0)
         if mix_mode == "linear_sum":
             mixed_multi = torch.sum(stacked, dim=0)
+        elif mix_mode == "average":
+            mixed_multi = torch.mean(stacked, dim=0)
         elif mix_mode == "rms_power":
             N = stacked.shape[0]
             mixed_multi = torch.sqrt(torch.sum(stacked ** 2, dim=0) / N)
-        elif mix_mode == "average":
-            mixed_multi = torch.mean(stacked, dim=0)
         elif mix_mode == "max_amplitude":
             mixed_multi = torch.max(stacked, dim=0)[0]
         peak = torch.max(torch.abs(mixed_multi)).item()

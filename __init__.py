@@ -2512,6 +2512,8 @@ Applied pre-SR resample, post-input; feeds auto_vol_balance."""}),
             "═══ MIX MODE ═══": ("STRING", {"default": "", "tooltip": "Mix mode and balance group"}),
             "mix_mode": (["linear_sum", "average", "rms_power", "max_amplitude"], {"default": "linear_sum", "tooltip": "linear_sum/rms_power/max_amplitude: coherent voltage SUM (fixed, real DAW mix, rec.); average: arithmetic mean."}),
             "mix_vol_preset_overrides": (["none", "equal", "vocals_lead", "bass_heavy", "wide_stereo"], {"default": "none", "tooltip": """Volume preset overrides (overrides vol_1-5 sliders):\nnone: use sliders\n equal: [0.0, 0.0, 0.0, 0.0, 0.0]\nvocals_lead: [3.5, -3.1, -3.1, -6.0, -6.0]\nbass_heavy: [-2.0, 1.6, 0.0, -0.9, -0.9]\nwide_stereo: [0.0, 0.0, -2.0, -2.0, 1.6]"""}),
+            "sample_accurate_mix_strategy": (["max", "power_sum"], {"default": "power_sum", "tooltip": "Sample-accurate group mix: max (peak envelope, experimental); power_sum (√N-normalized coherent sum, musical fallback)."}),
+            "short_duration_threshold": ("FLOAT", {"default": 3.0, "min": 0.1, "max": 30.0, "step": 0.1, "tooltip": "Auto-suggestion short_threshold seconds: crest>16dB AND duration<short → Sample-accurate (transients/sparse)."}),
             "−−− AUTO VOL BALANCE −−−": ("STRING", {"default": "", "tooltip": "Auto volume balance group"}),
             "auto_vol_balance": ("BOOLEAN", {"default": False, "tooltip": "Auto-adjust `vol_n` dB to target metric (torch only, post-resample, after presets)"}),
             "target_rms_db": ("FLOAT", {"default": -20.0, "min": -60.0, "max": -6.0, "step": 0.5, "tooltip": "RMS target dBFS per-track pre-mix (-20dB rec. for headroom with multiple coherent tracks); rms_power mode."}),
@@ -2528,6 +2530,17 @@ Shorter tracks extended per pad_mode. Use to sync to shortest track (e.g. vocal)
             "save_format": (["wav", "flac", "mp3", "ogg"], {"default": "wav"}),
             "=== Master Volume ===": ("STRING", {"default": "", "tooltip": "Master output volume adjustment (post-mix)."}),
             "master_vol_db": ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1, "tooltip": "Master volume dBFS (applied after mix, normalize, tanh-clamp)."}),
+            "headroom_db": ("FLOAT", {"default": -3.0, "min": -12.0, "max": 0.0, "step": 0.1, "tooltip": "Post-mix auto_normalize target headroom dBFS (e.g. -3dB=0.707 linear); applied before softclip."}),
+            "softclip_strength": ("FLOAT", {"default": 1.1, "min": 1.0, "max": 2.0, "step": 0.1, "tooltip": """Tanh softclip strength: Controls how aggressively peaks are limited post-normalization (after headroom_db scaling).
+
+Uses hyperbolic tangent (tanh): tanh(strength * x) / strength → smooth compression >0 dBFS, no hard clips.
+
+- 1.0: No effective clipping (linear pass-through).
+- 1.1 (default): Gentle peak rounding, transparent/mastering.
+- 1.25: Moderate 'tape' saturation/warmth.
+- ≥1.5: Aggressive distortion (creative/analog emulation).
+
+Always ≤1.0 output. Low= clean limit; high= colored compression."""}),
             "═══ TRACK CHANNELS 1-5 ═══": ("STRING", {"default": "", "tooltip": "enable_audio/vol/mute/in-audio for each channel 1-5"}),
         }
         for i in range(5):
@@ -2535,11 +2548,13 @@ Shorter tracks extended per pad_mode. Use to sync to shortest track (e.g. vocal)
             optional[f"enable_audio_{i+1}"] = ("BOOLEAN", {"default": i < 2})
             optional[f"vol_{i+1}"] = ("FLOAT", {"default": 0.0, "min": -60.0, "max": 12.0, "step": 0.1})
             optional[f"mute_{i+1}"] = ("BOOLEAN", {"default": False})
-            optional[f"track_type_{i+1}"] = (["Auto", "Standard", "Absonic", "Sample-accurate"], {"default": "Auto", "tooltip": """Track Type (rms_power or max_amplitude modes):
-- Auto (req. auto_vol_balance=true): crest_db>12=Sample-accurate, ch>=4=Absonic, else Standard (default)
+            optional[f"track_type_{i+1}"] = (["Auto", "Standard", "Sample-accurate", "Absonic"], {"default": "Auto", "tooltip": """Track Type (rms_power or max_amplitude modes):
+- Auto (req. auto_vol_balance=true): crest_db>16 AND dur<short_threshold=Sample-accurate, ch>=4=Absonic, else Standard
 - Standard: coherent voltage sum (music/instrument/vocal stems)
+- Sample-accurate: sample-wise MAX (experimental/glitch/granular/phase-critical)
 - Absonic: coherent sum, sqrt(N)-weight if multiple (spatial/Ambisonics/immersive; sliced to stereo)
-- Sample-accurate: sample-wise MAX (experimental/glitch/granular/phase-critical)"""})
+"""})
+
             optional[f"in-audio-{i+1}"] = ("AUDIO",)
         return {"optional": optional}
 
@@ -2645,6 +2660,10 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
         resample_mode = kwargs.get("resample", "auto")
         stereoize_delay_ms = int(kwargs.get("stereoize_delay_ms", 0))
         stereoize_headroom_db = kwargs.get("stereoize_headroom", -3.0)
+        headroom_db = kwargs.get("headroom_db", -3.0)
+        softclip_strength = kwargs.get("softclip_strength", 1.1)
+        sample_accurate_mix_strategy = kwargs.get("sample_accurate_mix_strategy", "power_sum")
+        short_duration_threshold = kwargs.get("short_duration_threshold", 3.0)
         active_indices = []
         for i in range(5):
             audio = audios[i]
@@ -2838,6 +2857,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                     trim_msgs.append(f"Track-{orig_i+1}")
             if trim_msgs:
                 trim_info = f"- Trim to track{track_length_master} ({master_len/target_sr:.1f}s): {', '.join(trim_msgs)}"
+        auto_applied_str = ""
         auto_dbg = ""
         if auto_vol_balance and resampled_multis:
             measured = []
@@ -2858,13 +2878,17 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                     peak_val = torch.max(torch.abs(post_vol_multi))
                     peak_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
                     crest_db = peak_db - measured_db
-                    if crest_db > 12:
-                        sug = "Sample-accurate"
+                    # NEW: Effective duration (non-zero samples; scale-invariant)
+                    nonzero_samples = (torch.abs(post_vol_multi) > 1e-5).sum().item()
+                    effective_duration = nonzero_samples / target_sr  # seconds
+                    # IMPROVED: Raised threshold + duration check (conservative: extremes only)
+                    if crest_db > 16 and effective_duration < short_duration_threshold:
+                        sug = "Sample-accurate"  # Sparse transients/glitch
                     elif orig_channels[j] >= 4:
-                        sug = "Absonic"
+                        sug = "Absonic"  # Spatial/multi-ch priority
                     else:
-                        sug = "Standard"
-                    suggestions.append(f"track{i_idx+1}:{sug} (crest:{crest_db:.1f}dB,ch:{orig_channels[j]})")
+                        sug = "Standard"  # Default: music/stems
+                    suggestions.append(f"track{i_idx+1}:{sug} (crest:{crest_db:.1f}dB,dur:{effective_duration:.1f}s,ch:{orig_channels[j]})")
                     type_sugs.append(sug)
                     delta_db = target - measured_db
                     vols[i_idx] += delta_db
@@ -2897,16 +2921,20 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                     post_vol_multi = w_multi * vol_lin
                     rms = torch.sqrt(torch.mean(post_vol_multi ** 2))
                     rms_db = 20 * torch.log10(torch.clamp(rms, min=1e-8)).item()
-                    peak_val = torch.max(torch.abs(post_vol_multi))  # core change
+                    peak_val = torch.max(torch.abs(post_vol_multi))
                     peak_db = 20 * torch.log10(torch.clamp(peak_val, min=1e-8)).item()
                     crest_db = peak_db - rms_db
-                    if crest_db > 12:
-                        sug = "Sample-accurate"
+                    # NEW: Effective duration (non-zero samples; scale-invariant)
+                    nonzero_samples = (torch.abs(post_vol_multi) > 1e-5).sum().item()
+                    effective_duration = nonzero_samples / target_sr  # seconds
+                    # IMPROVED: Raised threshold + duration check (conservative: extremes only)
+                    if crest_db > 16 and effective_duration < short_duration_threshold:
+                        sug = "Sample-accurate"  # Sparse transients/glitch
                     elif orig_channels[j] >= 4:
-                        sug = "Absonic"
+                        sug = "Absonic"  # Spatial/multi-ch priority
                     else:
-                        sug = "Standard"
-                    suggestions.append(f"track{i_idx+1}:{sug} (crest:{crest_db:.1f}dB,ch:{orig_channels[j]})")
+                        sug = "Standard"  # Default: music/stems
+                    suggestions.append(f"track{i_idx+1}:{sug} (crest:{crest_db:.1f}dB,dur:{effective_duration:.1f}s,ch:{orig_channels[j]})")
                     type_sugs.append(sug)
                     delta_db = target - peak_db
                     vols[i_idx] += delta_db
@@ -3001,7 +3029,18 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
             absonic_sum = torch.sum(torch.stack(absonic), dim=0) if absonic else torch.zeros(zero_shape, dtype=dtype_, device=device)
             if len(absonic) > 1:
                 absonic_sum /= len(absonic) ** 0.5
-            sample_mix = torch.max(torch.stack(sample_acc), dim=0)[0] if sample_acc else torch.zeros(zero_shape, dtype=dtype_, device=device)
+
+            # NEW REFINED Sample-accurate: hybrid strategy
+            if not sample_acc:
+                sample_mix = torch.zeros(zero_shape, dtype=dtype_, device=device)
+            elif len(sample_acc) == 1:
+                sample_mix = sample_acc[0]  # Identity: no op needed
+            else:
+                stack_sa = torch.stack(sample_acc)
+                if sample_accurate_mix_strategy == "max":
+                    sample_mix = torch.max(stack_sa, dim=0)[0]  # Peak envelope (experimental)
+                else:  # power_sum (default, musical)
+                    sample_mix = torch.sum(stack_sa, dim=0) / torch.sqrt(torch.tensor(len(sample_acc), dtype=dtype_, device=device))
             mixed_multi = standard_sum + absonic_sum + sample_mix
             used_types_str = ", ".join([f"track{active_indices[j]+1}:{active_types[j]}" for j in range(len(active_types))])
             type_counts = f"{mix_mode} types: Std:{len(standard)} Ab:{len(absonic)} Sa:{len(sample_acc)}"
@@ -3019,12 +3058,17 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                 mixed_multi = torch.sum(stacked, dim=0)  # coherent sum
             type_info = ""
         peak = torch.max(torch.abs(mixed_multi)).item()
-        if auto_normalize:
-            if peak > 1e-8:
-                mixed_multi *= (10 ** (-1 / 20)) / peak
-        mixed_multi = torch.tanh(mixed_multi * 1.25) / 1.25
+        norm_info = ""
+        if auto_normalize and peak > 1e-8:
+            headroom_lin = 10 ** (headroom_db / 20.0)
+            scale_factor = headroom_lin / peak
+            mixed_multi *= scale_factor
+            norm_info = f"norm:{headroom_db:.1f}dB "
+
+        # UPDATED: Configurable softclip (gentler default)
+        mixed_multi = torch.tanh(mixed_multi * softclip_strength) / softclip_strength
         post_peak = torch.max(torch.abs(mixed_multi)).item()
-        process_details = ((resample_dbg + "\n" if resample_dbg else "") + auto_dbg + (f"\n{trim_info}" if trim_info else "") + (f"\n{type_info}" if type_info else "")) + f"\n- Used torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({'norm+clamp' if auto_normalize else 'clamp'}:<=1.0)"
+        process_details = ((resample_dbg + "\n" if resample_dbg else "") + auto_dbg + (f"\n{trim_info}" if trim_info else "") + (f"\n{type_info}" if type_info else "")) + f"\n- Used torch mix (resample={resample_mode}), Target SR: {target_sr}, ch: {target_ch}, Max len: {mixed_multi.shape[2]}, Peak pre:{peak:.3f} post:{post_peak:.3f} ({norm_info}tanh{softclip_strength:.1f}:<=1.0)"
         mixed_mono = torch.mean(mixed_multi, dim=1, keepdim=True)
         if mixed_multi.shape[1] == 1:
             mixed_stereo = mixed_mono.repeat(1, 2, 1)

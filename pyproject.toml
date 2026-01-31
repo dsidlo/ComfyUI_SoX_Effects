@@ -1,7 +1,7 @@
 [project]
-name = "comfyui_SoX_Effects"
-version = "0.1.1"
-description = "Add your description here"
+name = "ComfyUI_SoX_Effects"
+version = "0.1.2"
+description = "ComfyUI Nodes for SoX & TorchAudio.sox-effects"
 requires-python = ">=3.13"
 dependencies = [
     "numpy>=2.4.1",

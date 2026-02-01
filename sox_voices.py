@@ -41,14 +41,17 @@ class SoxVeDeepOldManNode:
     DESCRIPTION = "Old Deep Man: bass +12 100 1q pitch +1.8 tremolo 4.8 35 equalizer 2500 1000h -4 lowpass 2800 gain -2.5 — Deep thin shaky hoarse quiet old voice."
     @staticmethod
     def _save_wav(filename, tensor, sample_rate):
-        data = tensor[0].cpu().numpy().astype(np.float32)
-        frames = len(data)
-        byte_rate = sample_rate * 4
-        block_align = 4
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
         fmt_chunk_size = 16
-        fmt_chunk = struct.pack("<HHIIHH", 3, 1, sample_rate, byte_rate, block_align, 32)
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
         data_chunk = data.tobytes()
-        data_size = frames * 4
+        data_size = len(data) * 4
         riff_size = 36 + data_size
         header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
         with open(filename, "wb") as f:
@@ -86,13 +89,13 @@ class SoxVeDeepOldManNode:
                     data = np.frombuffer(data_bytes, dtype=np.float32)
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
-                    data = data.reshape(channels, -1).mean(0)
+                    data = data.reshape(channels, -1)
                     waveform = torch.from_numpy(data).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
                     f.seek(chunk_size + (chunk_size % 2), 1)
-        raise ValueError("No data chunk")
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_deep_old_man=True, intensity=1.0, bass_gain=12.0, pitch_shift=1.8, tremolo_speed=4.8, tremolo_depth=35.0, eq_freq=2500, eq_gain=-4.0, eq_width=1000, lowpass_freq=2800, gain_adjust=-2.5, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
@@ -112,7 +115,6 @@ class SoxVeDeepOldManNode:
         cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_deep_old_man:
-            dbg_text = "** Enabled **\n" + cmd_str
             current_params.extend(effect_params)
             tmpdir = tempfile.mkdtemp(prefix='sox_')
             tmp_in = os.path.join(tmpdir, "input.wav")
@@ -120,10 +122,10 @@ class SoxVeDeepOldManNode:
             try:
                 sr = int(audio["sample_rate"])
                 waveform = audio["waveform"].squeeze(0)
-                if waveform.dim() == 2 and waveform.shape[0] > 1:
-                    waveform = waveform.mean(dim=0, keepdim=True)
                 self._save_wav(tmp_in, waveform, sr)
                 cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
@@ -159,25 +161,97 @@ class SoxVeChipmunkChildNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Chipmunk/Child: pitch +12 — Octave up (semitones)."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_chipmunk_child=True, intensity=1.0, pitch_shift=12, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         scaled_shift = int(pitch_shift * intensity)
         effect_params = ["pitch", f"+{scaled_shift}"]
-        if enable_voice_chipmunk_child:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"].squeeze(0),
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav chipmunk_child.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_chipmunk_child:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -199,27 +273,95 @@ class SoxVeHeliumNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Helium: pitch +600h — +600Hz shift."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_helium=True, intensity=1.0, pitch_shift_hz=600, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         scaled_shift = int(pitch_shift_hz * intensity)
         effect_params = ["pitch", f"+{scaled_shift}h"]
-        cmd_str = f"sox voice.wav helium.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_helium:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
             try:
+                sr = int(audio["sample_rate"])
                 waveform = audio["waveform"].squeeze(0)
-                processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                    waveform,
-                    int(audio["sample_rate"]),
-                    effect_params,
-                    channels_first=True,
-                )
-                processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
             except Exception as e:
-                dbg_text += f"\\nPreview failed: {str(e)}"
+                dbg_text += f"\n*** SoX failed: {str(e)}"
                 processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
         else:
             processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
@@ -249,25 +391,97 @@ class SoxVeRobotNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Robot/Vocoder-ish: chorus 0.5 0.9 50 0.4 0.25 2 -t — Thick metallic modulation."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_robot=True, chorus_gain_in=0.5, chorus_gain_out=0.9, chorus_delay=50.0, chorus_decay=0.4, chorus_speed=0.25, chorus_depth=2.0, chorus_phase=2, chorus_wave="tri", prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         wave_flag = "-t" if chorus_wave == "tri" else "-s"
         effect_params = ["chorus", str(chorus_gain_in), str(chorus_gain_out), str(chorus_delay), str(chorus_decay), str(chorus_speed), str(chorus_depth), str(chorus_phase), wave_flag]
-        if enable_voice_robot:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav robot.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_robot:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -294,27 +508,95 @@ class SoxVeAlienNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Alien: flanger 0.6 2 60 0.5 0.5 2 -s — Sweeping jet-like whoosh."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_alien=True, flanger_delay=0.6, flanger_depth=2.0, flanger_regen=60.0, flanger_speed=0.5, flanger_shape=0.5, flanger_taps=2, flanger_wave="sin", prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         wave_flag = "-s"
         effect_params = ["flanger", str(flanger_delay), str(flanger_depth), str(flanger_regen), str(flanger_speed), str(flanger_shape), str(flanger_taps), wave_flag]
-        cmd_str = f"sox voice.wav alien.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_alien:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
             try:
+                sr = int(audio["sample_rate"])
                 waveform = audio["waveform"].squeeze(0)
-                processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                    waveform,
-                    int(audio["sample_rate"]),
-                    effect_params,
-                    channels_first=True,
-                )
-                processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
             except Exception as e:
-                dbg_text += f"\\nPreview failed: {str(e)}"
+                dbg_text += f"\n*** SoX failed: {str(e)}"
                 processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
         else:
             processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
@@ -327,14 +609,13 @@ class SoxVeGhostNode:
             "required": {
                 "audio": ("AUDIO",),
                 "enable_voice_ghost": ("BOOLEAN", {"default": True}),
-                "intensity": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 2.0, "step": 0.1}),
                 "highpass_freq": ("INT", {"default": 200, "min": 20, "max": 1000, "step": 10}),
                 "pitch_shift": ("INT", {"default": 350, "min": 0, "max": 1200, "step": 10}),
                 "chorus_gain_in": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "chorus_gain_out": ("FLOAT", {"default": 0.9, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "chorus_delay": ("FLOAT", {"default": 50.0, "min": 0.0, "max": 200.0, "step": 1.0}),
+                "chorus_delay": ("FLOAT", {"default": 50.0, "min": 20.1, "max": 200.0, "step": 0.1}),
                 "chorus_decay": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 0.99, "step": 0.01}),
-                "chorus_speed": ("FLOAT", {"default": 0.25, "min": 0.0, "max": 2.0, "step": 0.01}),
+                "chorus_speed": ("FLOAT", {"default": 0.25, "min": 0.1, "max": 2.0, "step": 0.01}),
                 "chorus_depth": ("FLOAT", {"default": 3.0, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "chorus_wave": (["sin", "tri"], {"default": "tri"}),
                 "reverb_reverberance": ("INT", {"default": 85, "min": 0, "max": 100, "step": 1}),
@@ -344,14 +625,14 @@ class SoxVeGhostNode:
                 "reverb_pre_delay": ("INT", {"default": 20, "min": 0, "max": 500, "step": 1}),
                 "echos_gain_in": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "echos_gain_out": ("FLOAT", {"default": 0.88, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "echos_delay1": ("INT", {"default": 300, "min": 0, "max": 2000, "step": 10}),
+                "echos_delay1": ("INT", {"default": 1, "min": 1, "max": 2000, "step": 10}),
                 "echos_decay1": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "echos_delay2": ("INT", {"default": 600, "min": 0, "max": 2000, "step": 10}),
+                "echos_delay2": ("INT", {"default": 1, "min": 1, "max": 2000, "step": 1}),
                 "echos_decay2": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "echos_delay3": ("INT", {"default": 1200, "min": 0, "max": 4000, "step": 10}),
+                "echos_delay3": ("INT", {"default": 1, "min": 1, "max": 4000, "step": 1}),
                 "echos_decay3": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "lowpass_freq": ("INT", {"default": 4000, "min": 20, "max": 20000, "step": 50}),
-                "gain_adjust": ("FLOAT", {"default": -8.0, "min": -20.0, "max": 0.0, "step": 0.1}),
+                "gain_adjust": ("FLOAT", {"default": -8.0, "min": -20.0, "max": 20.0, "step": 0.1}),
             },
             "optional": {"prev_params": ("SOX_PARAMS",)}
         }
@@ -362,14 +643,17 @@ class SoxVeGhostNode:
     DESCRIPTION = "Scary Ghost: highpass 200 pitch +350 chorus 0.7 0.9 50 0.4 0.25 3 -t reverb 85 70 90 90 20 0 echos 0.8 0.88 300 0.5 600 0.3 1200 0.2 lowpass 4000 gain -8 — Eerie thin ghostly shimmer reverb multi-echoes (intensity scales pitch/depths/decays/etc.)."
     @staticmethod
     def _save_wav(filename, tensor, sample_rate):
-        data = tensor[0].cpu().numpy().astype(np.float32)
-        frames = len(data)
-        byte_rate = sample_rate * 4
-        block_align = 4
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
         fmt_chunk_size = 16
-        fmt_chunk = struct.pack("<HHIIHH", 3, 1, sample_rate, byte_rate, block_align, 32)
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
         data_chunk = data.tobytes()
-        data_size = frames * 4
+        data_size = len(data) * 4
         riff_size = 36 + data_size
         header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
         with open(filename, "wb") as f:
@@ -407,18 +691,18 @@ class SoxVeGhostNode:
                     data = np.frombuffer(data_bytes, dtype=np.float32)
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
-                    data = data.reshape(channels, -1).mean(0)
+                    data = data.reshape(channels, -1)
                     waveform = torch.from_numpy(data).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
                     f.seek(chunk_size + (chunk_size % 2), 1)
-        raise ValueError("No data chunk")
+            raise ValueError("No data chunk")
     
-    def process(self, audio, enable_voice_ghost=True, intensity=1.0,
+    def process(self, audio, enable_voice_ghost=True,
                 highpass_freq=200,
                 pitch_shift=350,
-                chorus_gain_in=0.7, chorus_gain_out=0.9, chorus_delay=50.0,
+                chorus_gain_in=0.7, chorus_gain_out=0.9, chorus_delay=21.0,
                 chorus_decay=0.4, chorus_speed=0.25, chorus_depth=3.0, chorus_wave="tri",
                 reverb_reverberance=85, reverb_hf_damping=70, reverb_roomscale=90, reverb_stereo_depth=90, reverb_pre_delay=20,
                 echos_gain_in=0.8, echos_gain_out=0.88,
@@ -426,31 +710,22 @@ class SoxVeGhostNode:
                 echos_delay2=600, echos_decay2=0.3,
                 echos_delay3=1200, echos_decay3=0.2,
                 lowpass_freq=4000, gain_adjust=-8.0, prev_params=None):
+        chorus_delay = min(chorus_delay, 21.0)
         current_params = prev_params["sox_params"] if prev_params else []
-        scaled_pitch = int(pitch_shift * intensity)
-        scaled_chorus_decay = min(0.99, chorus_decay * intensity)
-        scaled_chorus_speed = chorus_speed * intensity
-        scaled_chorus_depth = chorus_depth * intensity
-        scaled_reverb_reverberance = min(100, reverb_reverberance * intensity)
-        scaled_reverb_pre_delay = int(reverb_pre_delay * intensity)
-        scaled_echos_decay1 = min(1.0, echos_decay1 * intensity)
-        scaled_echos_decay2 = min(1.0, echos_decay2 * intensity)
-        scaled_echos_decay3 = min(1.0, echos_decay3 * intensity)
-        scaled_gain = gain_adjust * intensity
+        lowpass_freq = min(lowpass_freq, 20000) # lowpass_freq max is 20000
         chorus_wave_flag = "-t" if chorus_wave == "tri" else "-s"
         effect_params = [
             "highpass", str(highpass_freq),
-            "pitch", f"+{scaled_pitch}",
-            "chorus", str(chorus_gain_in), str(chorus_gain_out), str(chorus_delay), str(scaled_chorus_decay), str(scaled_chorus_speed), str(scaled_chorus_depth), chorus_wave_flag,
-            "reverb", str(scaled_reverb_reverberance), str(reverb_hf_damping), str(reverb_roomscale), str(reverb_stereo_depth), str(scaled_reverb_pre_delay), "0",
-            "echos", str(echos_gain_in), str(echos_gain_out), str(echos_delay1), str(scaled_echos_decay1), str(echos_delay2), str(scaled_echos_decay2), str(echos_delay3), str(scaled_echos_decay3),
+            "pitch", f"+{pitch_shift}",
+            "chorus", str(chorus_gain_in), str(chorus_gain_out), str(chorus_delay), str(chorus_decay), str(chorus_speed), str(chorus_depth), chorus_wave_flag,
+            "reverb", str(reverb_reverberance), str(reverb_hf_damping), str(reverb_roomscale), str(reverb_stereo_depth), str(reverb_pre_delay), "0",
+            "echos", str(echos_gain_in), str(echos_gain_out), str(echos_delay1), str(echos_decay1), str(echos_delay2), str(echos_decay2), str(echos_delay3), str(echos_decay3),
             "lowpass", str(lowpass_freq),
-            "gain", f"{scaled_gain}"
+            "gain", f"{gain_adjust}"
         ]
         cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_ghost:
-            dbg_text = "** Enabled **\n" + cmd_str
             current_params.extend(effect_params)
             tmpdir = tempfile.mkdtemp(prefix='sox_')
             tmp_in = os.path.join(tmpdir, "input.wav")
@@ -458,23 +733,24 @@ class SoxVeGhostNode:
             try:
                 sr = int(audio["sample_rate"])
                 waveform = audio["waveform"].squeeze(0)
-                if waveform.dim() == 2 and waveform.shape[0] > 1:
-                    waveform = waveform.mean(dim=0, keepdim=True)
                 self._save_wav(tmp_in, waveform, sr)
                 cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n executed: " + full_cmd_str
                 result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
                     processed_audio = audio
                 else:
                     processed_waveform, processed_sr = self._load_wav(tmp_out)
-                    processed_audio = {"waveform": processed_waveform.unsqueeze(0), "sample_rate": processed_sr}
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
             except Exception as e:
                 dbg_text += f"\n*** SoX failed: {str(e)}"
                 processed_audio = audio
             finally:
                 shutil.rmtree(tmpdir, ignore_errors=True)
         else:
+            dbg_text = "** Enabled **\n" + cmd_str
             processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 

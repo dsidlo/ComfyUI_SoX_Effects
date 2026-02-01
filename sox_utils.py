@@ -10,6 +10,7 @@ import re
 import shutil
 from PIL import Image
 
+# TODO: Add a node for down-sampling mono and up-sampling stereo. Controllable with a toggle.
 
 class SoxApplyEffectsNode:
     @classmethod

@@ -164,3 +164,94 @@ When writing your fallback code:
 - For effects that alter playback rate/duration (`speed`, `pitch`, `tempo`, `stretch`, etc.), **always append** a `rate` effect at your target sample rate — this is the most common gotcha when migrating from CLI to torchaudio.
 - Test chains with `torchaudio.sox_effects.effect_names()` on your install to confirm support.
 
+## torchaudio.sox_effects may down-sample stereo
+
+Torchaudio.sox_effects may down-sample stereo to mono for some effects.
+
+**No, `torchaudio.sox_effects` does *not* always downsample stereo audio when applying effects.**
+
+It behaves very similarly to the standalone **SoX** command-line tool: most effects process each channel independently and preserve the original number of channels (stereo stays stereo, mono stays mono) unless you explicitly include an effect that changes the channel count.
+
+### Key Behavior
+- The main functions are:
+  - `torchaudio.sox_effects.apply_effects_tensor(waveform, sample_rate, effects, channels_first=True)`
+  - `torchaudio.sox_effects.apply_effects_file(path, effects, ...)`
+- These apply a chain of SoX-style effects to the input tensor or file.
+- **Channel count is preserved by default** — stereo input (shape `[2, length]` or `[length, 2]` depending on `channels_first`) produces stereo output.
+- **No automatic downmix/downsampling to mono** occurs just because the input is stereo.
+- **Sample rate** is preserved unless you include a `rate` effect (or certain others like `speed`/`pitch` that require a follow-up `rate` to actually change it).
+
+### Effects That *Can* Change Channels
+You must **explicitly add** one of these to alter channel count:
+- `channels N` → Force output to N channels (e.g., `channels 1` downmixes to mono).
+- `remix` → Powerful channel remapping/mixing (e.g., `remix 1,2` keeps stereo; `remix -` downmixes to mono by averaging).
+- `oops` → Creates an out-of-phase stereo difference signal (stays 2 channels, but content changes).
+- Some rare effects like `earwax` are stereo-oriented but don't force mono.
+
+### Examples from Documentation & Usage
+Common chains keep stereo intact:
+```python
+effects = [
+    ["gain", "-n"],           # normalize
+    ["pitch", "200"],         # shift pitch up
+    ["lowpass", "3000"],      # filter highs
+    ["reverb"],               # add reverb
+]
+waveform_out, sr_out = torchaudio.sox_effects.apply_effects_tensor(
+    stereo_waveform, sr, effects
+)
+# waveform_out still has shape [2, length] if input was stereo
+```
+
+To force mono (downmix), add:
+```python
+effects.append(["channels", "1"])   # or ["remix", "-"]
+```
+
+### Quick Test Pattern
+```python
+import torchaudio
+
+# Assume stereo input
+wave, sr = torchaudio.load("stereo_file.wav")  # shape [2, num_frames]
+print("Input channels:", wave.shape[0])        # → 2
+
+effects = [["tremolo", "5", "30"], ["pitch", "150"]]
+out, out_sr = torchaudio.sox_effects.apply_effects_tensor(wave, sr, effects)
+print("Output channels:", out.shape[0])        # → still 2
+```
+
+In summary: No automatic downsampling or downmixing to mono for stereo inputs — it's channel-preserving by default, just like SoX itself. If you're seeing channel reduction, check your effect list for something like `channels 1`, `remix`, or a bug in how channels_first is handled. For voice effects (like the old man or ghost chains we discussed), stereo inputs will stay stereo unless you add a channel-changing effect.
+
+## Does SoX ever down sample stereo?
+
+**No, SoX does not have any effects that strictly require mono (single-channel) audio input.**
+
+From the official SoX documentation (man pages for sox(1) and soxeffect(7)), source code references, and community usage examples across years (including recent discussions), **all effects are designed to handle both mono and stereo (and often multi-channel) inputs flexibly**:
+
+- Most effects (pitch, tremolo, reverb, echo, chorus, equalizer, lowpass/highpass, gain, overdrive, norm, fade, etc.) process **each channel independently**.  
+  → Mono input → mono output.  
+  → Stereo input → stereo output (left/right treated the same unless the effect is stereo-aware).
+
+- A small number of effects are **stereo-oriented** by design or purpose, but they do **not require stereo** — they either:
+  - Have little/no effect on mono (e.g., `oops` computes L-R difference → on mono it's usually zero or near-zero change, no error).
+  - Are documented for stereo but still accept mono gracefully (e.g., `earwax` — headphone spatialization at 44.1 kHz; on mono it may do nothing useful but doesn't fail).
+  - Provide stereo-specific parameters (e.g., `flanger` phase across channels), but fall back sensibly on mono.
+
+- **No effect** in the standard SoX list throws an error like "requires mono input" or "single channel only".  
+  The closest things are channel-manipulation "effects" or global options that change channel count:
+  - `channels 1` (forces mono output, but accepts stereo input and downmixes it).
+  - `remix` (very flexible; can take mono or stereo, and you define the mapping — trivial on mono).
+  - These are **not requirements**; they're tools to alter channels.
+
+### Quick Confirmation from Real-World Behavior
+- You can run any voice-altering chain we discussed earlier (`pitch`, `tremolo`, `reverb`, etc.) directly on **mono voice recordings** — that's the most common use case for speech effects.
+- On stereo music/vocals: same effects apply per channel without forcing mono.
+- If SoX ever complains about channels, it's almost always:
+  - Mismatch in a chain where an earlier effect outputs unexpected channels.
+  - Using something like `swap` or `oops` on mono (ignored or warned, not errored).
+  - Very old/buggy SoX versions (pre-14.x).
+
+In short: SoX is channel-agnostic for effects processing — **nothing mandates mono input**. If you're seeing a specific error that suggests otherwise, share the exact command and message (it's likely something else in the pipeline). For your ghost/old-man voice work, feel free to use mono inputs directly — no conversion needed!
+
+

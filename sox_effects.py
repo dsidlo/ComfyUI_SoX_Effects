@@ -17,7 +17,7 @@ class SoxAllpassNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Effects/Equalization / Filtering / Tone Shaping"
+    CATEGORY = "audio/SoX/Effects/Equalization/Filtering/Tone Shaping"
     DESCRIPTION = "Allpass SoX effect node for chaining. dbg-text STRING: 'allpass params' always (pre-extend; '** Enabled **' prefix if on)."
 
     def process(self, audio, enable_allpass=True, allpass_frequency=1000.0, allpass_width=1.0, prev_params=None):

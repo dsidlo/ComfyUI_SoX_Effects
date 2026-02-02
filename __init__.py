@@ -18,3 +18,4 @@ for module_name in node_list:
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
 
+from .sox_node_utils import SoxNodeUtils as sxu

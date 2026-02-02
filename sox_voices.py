@@ -11,6 +11,7 @@ import struct
 import shutil
 from PIL import Image
 import torch
+from .sox_node_utils import SoxNodeUtils as sxu
 
 # All SoxVoice* nodes here - code copied from __init__.py lines 2286-3143
 

@@ -483,9 +483,9 @@ class SoxGainNode:
         return {
             "required": {
                 "audio": ("audio",),
-                "enable_gain": ("boolean", {"default": True, "tooltip": "gain [-n] amount [dB]"}),
+                "enable_gain": ("boolean", {"default": True, "tooltip": "gain [-n] gain_db [dB]"}),
                 "gain_normalize": ("boolean", {"default": False}),
-                "gain_amount": ("float", {"default": 0.0, "min": -60.0, "max": 60.0, "step": 0.1}),
+                "gain_db": ("float", {"default": 0.0, "min": -60.0, "max": 60.0, "step": 0.1}),
             },
             "optional": {
                 "prev_params": ("sox_params",),
@@ -498,12 +498,12 @@ class SoxGainNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Gain SoX effect node for chaining. dbg-text `string`: 'gain params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
-    def process(self, audio, enable_gain=True, gain_normalize=False, gain_amount=0.0, prev_params=None):
+    def process(self, audio, enable_gain=True, gain_normalize=False, gain_db=0.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params is not None else []
         effect_params = ["gain"]
         if gain_normalize:
             effect_params.append("-n")
-        effect_params.append(str(gain_amount))
+        effect_params.append(str(gain_db))
         debug_str = shlex.join(effect_params)
         if enable_gain:
             debug_str = "** Enabled **\n" + debug_str

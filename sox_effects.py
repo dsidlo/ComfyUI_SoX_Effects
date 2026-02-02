@@ -1,4 +1,14 @@
 import shlex
+import subprocess
+import tempfile
+import os
+import torch
+import torchaudio
+import numpy as np
+import uuid
+import re
+import shutil
+from PIL import Image
 
 class SoxAllpassNode:
     @classmethod
@@ -482,33 +492,134 @@ class SoxGainNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio": ("audio",),
-                "enable_gain": ("boolean", {"default": True, "tooltip": "gain [-n] gain_db [dB]"}),
-                "gain_normalize": ("boolean", {"default": False}),
-                "gain_db": ("float", {"default": 0.0, "min": -60.0, "max": 60.0, "step": 0.1}),
+                "audio": ("AUDIO",),
+                "enable_gain": ("BOOLEAN", {"default": True, "tooltip": "Enable gain effect"}),
+                "gain_mode": (["none", "equalize", "rms_avg_power", "rms_auto_attenuation"], {"default": "none"}),
+                "gain_dB": ("FLOAT", {"default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1}),
+                "normalize": ("BOOLEAN", {"default": False}),
+                "limiter": ("BOOLEAN", {"default": False}),
+                "headroom": ("BOOLEAN", {"default": False}),
+                "reclaim_headroom": ("BOOLEAN", {"default": False}),
             },
             "optional": {
-                "prev_params": ("sox_params",),
+                "prev_params": ("SOX_PARAMS",),
             }
         }
 
-    RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
+    RETURN_TYPES = ("AUDIO", "STRING", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Effects/Dynamics"
-    DESCRIPTION = "Gain SoX effect node for chaining. dbg-text `string`: 'gain params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
+    DESCRIPTION = "Gain SoX effect node with UI sliders and subprocess execution."
 
-    def process(self, audio, enable_gain=True, gain_normalize=False, gain_db=0.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
+    def process(self, audio, enable_gain=True, gain_mode="none", gain_dB=0.0, normalize=False, limiter=False, headroom=False, reclaim_headroom=False, prev_params=None):
+        current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["gain"]
-        if gain_normalize:
+        if gain_mode == "equalize":
+            effect_params.append("-e")
+        elif gain_mode == "rms_avg_power":
+            effect_params.append("-B")
+        elif gain_mode == "rms_auto_attenuation":
+            effect_params.append("-b")
+        if gain_dB != 0.0:
+            effect_params.append(str(gain_dB))
+        if normalize:
             effect_params.append("-n")
-        effect_params.append(str(gain_db))
-        debug_str = shlex.join(effect_params)
+        if limiter:
+            effect_params.append("-l")
+        if headroom:
+            effect_params.append("-h")
+        if reclaim_headroom:
+            effect_params.append("-r")
+        # Note: -e, -B, -b are mutually exclusive; gain_mode ensures only one. Invalid combos like -l with -n may cause SoX errors.
+        cmd_str = shlex.join(effect_params)
+        debug_str = cmd_str
         if enable_gain:
-            debug_str = "** Enabled **\n" + debug_str
             current_params.extend(effect_params)
-        return (audio, {"sox_params": current_params}, debug_str)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                debug_str = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    debug_str += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                debug_str += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
+        return (processed_audio, cmd_str, debug_str)
 
 
 class SoxHilbertNode:

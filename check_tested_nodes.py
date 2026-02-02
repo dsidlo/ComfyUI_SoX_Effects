@@ -1,5 +1,6 @@
 import glob
 import re
+import sys
 
 total_nodes = 0
 tested_nodes = 0

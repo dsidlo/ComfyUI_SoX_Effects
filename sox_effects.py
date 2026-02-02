@@ -1316,7 +1316,7 @@ class SoxBassNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Bass SoX effect node for chaining. dbg-text STRING: 'bass params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_bass=True, bass_gain=0.0, bass_frequency=100.0, bass_width=0.5, prev_params=None):
@@ -1351,7 +1351,7 @@ class SoxBendNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Bend SoX effect node for chaining. dbg-text STRING: 'bend params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_bend=True, bend_frame_rate=25, bend_over_sample=16, bend_start_time=0.0,
@@ -1409,7 +1409,7 @@ class SoxChorusNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Chorus SoX effect node for chaining. dbg-text STRING: 'chorus params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_chorus=True, chorus_gain_in=0.5, chorus_gain_out=0.5,
@@ -1478,7 +1478,7 @@ class SoxCompandNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Compand SoX effect node for chaining. dbg-text STRING: 'compand params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_compand=True,
@@ -1589,7 +1589,7 @@ class SoxEchoNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Echo SoX effect node for chaining. dbg-text STRING: 'echo gain-in gain-out [delay decay ...]' always (pre-extend, survives disable)."
 
     def process(self, audio, enable_echo=True, echo_gain_in=0.8, echo_gain_out=0.9,
@@ -1642,7 +1642,7 @@ class SoxEchosNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Echos SoX effect node for chaining. dbg-text STRING: 'echos params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_echos=True, echos_gain_in=0.8, echos_gain_out=0.9,
@@ -1688,7 +1688,7 @@ class SoxEqualizerNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Equalizer SoX effect node for chaining."
 
     def process(self, audio, enable_equalizer=True, equalizer_frequency=1000.0, equalizer_width=1.0, equalizer_gain=0.0,
@@ -1751,7 +1751,7 @@ interp   --    lin   delay-line interpolation: linear|quadratic"""}),
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Flanger SoX effect node for chaining. dbg-text `string`: 'flanger params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_flanger=True, flanger_delay=0.0, flanger_depth=2.0, flanger_regen=0.0,
@@ -1790,7 +1790,7 @@ class SoxHighpassNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Highpass SoX effect node for chaining."
 
     def process(self, audio, enable_highpass=True, highpass_poles=2, highpass_frequency=3000.0, highpass_width=0.707,
@@ -1822,7 +1822,7 @@ class SoxLowpassNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Lowpass SoX effect node for chaining."
 
     def process(self, audio, enable_lowpass=True, lowpass_poles=2, lowpass_frequency=1000.0, lowpass_width=0.707,
@@ -1852,7 +1852,7 @@ class SoxOverdriveNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Overdrive SoX effect node for chaining."
 
     def process(self, audio, enable_overdrive=True, overdrive_gain=20.0, overdrive_colour=20.0, prev_params=None):
@@ -1885,7 +1885,7 @@ class SoxPhaserNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Phaser SoX effect node for chaining."
 
     def process(self, audio, enable_phaser=True, phaser_gain_in=0.8, phaser_gain_out=0.74, phaser_delay=3.0,
@@ -1923,7 +1923,7 @@ class SoxPitchNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Pitch SoX effect node for chaining."
 
     def process(self, audio, enable_pitch=True, pitch_q=False, pitch_shift=0, pitch_segment=82.0, pitch_search=14.0,
@@ -1963,7 +1963,7 @@ class SoxReverbNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Reverb SoX effect node for chaining."
 
     def process(self, audio, enable_reverb=True, reverb_wet_only=False, reverb_reverberance=50.0,
@@ -2004,7 +2004,7 @@ class SoxTempoNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Tempo SoX effect node for chaining."
 
     def process(self, audio, enable_tempo=True, tempo_q=False, tempo_factor=1.0, tempo_segment=82.0, tempo_search=14.0,
@@ -2041,7 +2041,7 @@ class SoxTrebleNode:
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Treble SoX effect node for chaining. dbg-text `string`: 'treble params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_treble=True, treble_gain=0.0, treble_frequency=3000.0, treble_width=0.5,
@@ -2072,7 +2072,7 @@ class SoxTremoloNode:
 
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
     FUNCTION = "process"
-    CATEGORY = "audio/SoX/Voice"
+    CATEGORY = "audio/SoX/Effects"
     DESCRIPTION = "Tremolo SoX effect node for chaining."
 
     def process(self, audio, enable_tremolo=True, tremolo_speed=0.5, tremolo_depth=40.0, prev_params=None):

@@ -8,6 +8,7 @@ import numpy as np
 import uuid
 import re
 import shutil
+import struct
 from PIL import Image
 
 class SoxAllpassNode:

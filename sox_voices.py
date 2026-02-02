@@ -2126,8 +2126,7 @@ class SoxVeMinionNode:
             "required": {
                 "audio": ("AUDIO",),
                 "enable_voice_minion": ("BOOLEAN", {"default": True}),
-                "intensity": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 2.0, "step": 0.1}),
-                "pitch_shift": ("INT", {"default": 7, "min": 0, "max": 24, "tooltip": "Pitch shift in semitones, scaled by intensity."}),
+                "pitch_shift": ("INT", {"default": 7, "min": 0, "max": 24, "tooltip": "Pitch shift in semitones."}),
                 "chorus_gain_in": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Chorus input gain, scaled by intensity."}),
                 "chorus_gain_out": ("FLOAT", {"default": 0.95, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Chorus output gain, scaled by intensity."}),
                 "chorus_delay": ("FLOAT", {"default": 30.0, "min": 0.1, "max": 100.0, "step": 0.1, "tooltip": "Chorus delay in ms, scaled by intensity."}),
@@ -2203,9 +2202,8 @@ class SoxVeMinionNode:
                     f.seek(chunk_size + (chunk_size % 2), 1)
             raise ValueError("No data chunk")
 
-    def process(self, audio, prev_params=None, enable_voice_minion=True, intensity=1.0, pitch_shift=7, chorus_gain_in=0.3, chorus_gain_out=0.95, chorus_delay=30.0, chorus_decay=0.5, chorus_speed=0.15, chorus_depth=5.0, chorus_wave="tri"):
+    def process(self, audio, prev_params=None, enable_voice_minion=True, pitch_shift=7, chorus_gain_in=0.3, chorus_gain_out=0.95, chorus_delay=30.0, chorus_decay=0.5, chorus_speed=0.15, chorus_depth=5.0, chorus_wave="tri"):
         current_params = prev_params["sox_params"] if prev_params else []
-        pitch_shift = int(7 * intensity)
         effect_params = ["pitch", f"+{pitch_shift}", "chorus", "0.3", "0.95", "30", "0.5", "0.15", "5", "-t"]
         cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str

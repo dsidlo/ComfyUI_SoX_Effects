@@ -87,9 +87,8 @@ class SoxUtilSpectrogramNode:
             }
         }
 
-    RETURN_TYPES = ("AUDIO", "IMAGE", "SOX_PARAMS", "STRING")
-    RETURN_NAMES = ("audio", "image", "sox_params", "dbg-text")
-    RETURN_NAMES = ("audio", "image", "sox_params", "dbg-text")
+    RETURN_TYPES = ("IMAGE", "SOX_PARAMS", "STRING")
+    RETURN_NAMES = ("image", "sox_params", "dbg-text")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Utilities"
     DESCRIPTION = """Spectrogram node: Native unaltered `IMAGE`(s) from up to 4 `audio-0`..`audio-3` (SoX PNG→torch uint8 IMAGE, no resize; multi: batched [N,H_native~257,W_native~512-800,3] grid preview).
@@ -98,9 +97,7 @@ class SoxUtilSpectrogramNode:
 
 - dbg-text: params + sim cmds; **errors logged**.
 
-- PNG: `{png_prefix}_audio-n_{b:03d}.png` cwd (prefix).
-
-Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
+- PNG: `{png_prefix}_audio-n_{b:03d}.png` cwd (prefix)."""
 
     def process(self, **kwargs):
         # Extract params from kwargs

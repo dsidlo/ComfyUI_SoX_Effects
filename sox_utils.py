@@ -1433,7 +1433,10 @@ class SoxUtilAudioReportNode:
                 for cmd_str in commands:
                     full_cmd = shlex.split(cmd_str)
                     try:
-                        result = subprocess.run(full_cmd, capture_output=True, text=True, check=True)
+                        if "stats" in cmd_str or "stat" in cmd_str:
+                            result = subprocess.run(full_cmd, capture_output=True, text=True, stderr=subprocess.STDOUT, check=True)
+                        else:
+                            result = subprocess.run(full_cmd, capture_output=True, text=True, check=True)
                         output = result.stdout.strip() if result.stdout.strip() else "No output (success)"
                         report_outputs.append(f"===== {cmd_str}\n{output}")
                     except subprocess.CalledProcessError as e:

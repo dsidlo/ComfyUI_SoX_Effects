@@ -587,8 +587,11 @@ class SoxGainNode:
                 "": (["none", "equalize", "rms_avg_power", "rms_auto_attenuation"], {"default": "none"}),
                 "gain_dB": ("FLOAT", {"default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1}),
                 "normalize": ("BOOLEAN", {"default": False}),
+                "normalize_db": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 0.0, "step": 0.1}),
                 "limiter": ("BOOLEAN", {"default": False}),
+                "limiter_db": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 0.0, "step": 0.1}),
                 "headroom": ("BOOLEAN", {"default": False}),
+                "headroom_db": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 0.0, "step": 0.1}),
                 "reclaim_headroom": ("BOOLEAN", {"default": False}),
                 "sox_params": ("SOX_PARAMS",),
             }
@@ -600,7 +603,7 @@ class SoxGainNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Gain SoX effect node with UI sliders for chaining."
 
-    def process(self, audio, enable_gain=True, eq_mode="none", gain_dB=0.0, normalize=False, limiter=False, headroom=False, reclaim_headroom=False, sox_params=None):
+    def process(self, audio, enable_gain=True, eq_mode="none", gain_dB=0.0, normalize=False, normalize_db=0.0, limiter=False, limiter_db=0.0, headroom=False, headroom_db=0.0, reclaim_headroom=False, sox_params=None):
         current_params = sox_params["sox_params"] if sox_params else []
         effect_params = ["gain"]
         if eq_mode == "equalize":
@@ -613,10 +616,16 @@ class SoxGainNode:
             effect_params.append(str(gain_dB))
         if normalize:
             effect_params.append("-n")
+            if normalize_db != 0.0:
+                effect_params.append(str(normalize_db))
         if limiter:
             effect_params.append("-l")
+            if limiter_db != 0.0:
+                effect_params.append(str(limiter_db))
         if headroom:
             effect_params.append("-h")
+            if headroom_db != 0.0:
+                effect_params.append(str(headroom_db))
         if reclaim_headroom:
             effect_params.append("-r")
         # Note: -e, -B, -b are mutually exclusive; eq_mode ensures only one. Invalid combos like -l with -n may cause SoX errors.

@@ -48,6 +48,10 @@ Auto Volume Balance Detection for RMS Power and Max Amplitude mixing modes.
 
 ## Progress...
 
+  - Total Nodes: 101
+  - Nodes Tested: 11
+  - Nodes Untested: 90
+
 ### Tested and Refined
 
 SoxUtilSpectrogramNode, SoxUtilTextMux5Node, SoxUtilTextMux10Node

@@ -584,10 +584,9 @@ class SoxGainNode:
             },
             "optional": {
                 "enable_gain": ("BOOLEAN", {"default": True, "tooltip": "Enable gain effect"}),
+                "gain_dB": ("FLOAT", {"default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1}),
                 "enable_equalize": ("BOOLEAN", {"default": False, "tooltip": "Enable -e equalize"}),
                 "enable_peak": ("BOOLEAN", {"default": False, "tooltip": "Enable -b peak"}),
-                "enable_rms_level": ("BOOLEAN", {"default": False, "tooltip": "Enable -r rms level"}),
-                "gain_dB": ("FLOAT", {"default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1}),
                 "normalize": ("BOOLEAN", {"default": False}),
                 "normalize_db": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 0.0, "step": 0.1}),
                 "limiter": ("BOOLEAN", {"default": False}),
@@ -605,15 +604,13 @@ class SoxGainNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Gain SoX effect node with UI sliders for chaining."
 
-    def process(self, audio, enable_gain=True, enable_equalize=False, enable_peak=False, enable_rms_level=False, gain_dB=0.0, normalize=False, normalize_db=0.0, limiter=False, limiter_db=0.0, headroom=False, headroom_db=0.0, reclaim_headroom=False, sox_params=None):
+    def process(self, audio, enable_gain=True, gain_dB=0.0, enable_equalize=False, enable_peak=False, normalize=False, normalize_db=0.0, limiter=False, limiter_db=0.0, headroom=False, headroom_db=0.0, reclaim_headroom=False, sox_params=None):
         current_params = sox_params["sox_params"] if sox_params else []
         effect_params = ["gain"]
         if enable_equalize:
             effect_params.append("-e")
         if enable_peak:
             effect_params.append("-b")
-        if enable_rms_level:
-            effect_params.append("-r")
         if gain_dB != 0.0:
             effect_params.append(str(gain_dB))
         if normalize:

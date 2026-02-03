@@ -1435,7 +1435,7 @@ class SoxUtilAudioReportNode:
                     try:
                         result = subprocess.run(full_cmd, capture_output=True, text=True, check=True)
                         output = result.stdout.strip() if result.stdout.strip() else "No output (success)"
-                        report_outputs.append(f"{cmd_str}\n{output}")
+                        report_outputs.append(f"===== {cmd_str}\n{output}")
                     except subprocess.CalledProcessError as e:
                         error_msg = f"Error (rc={e.returncode}): {e.stderr.strip() if e.stderr else 'No stderr'}"
                         report_outputs.append(f"{cmd_str}\n{error_msg}")

@@ -1348,6 +1348,112 @@ process_mode: torch=tensor (default); sox=future. dbg_text: settings/mode/SR/len
 
         return (audio_mono, audio_stereo, wet_audio, dry_audio, {"sox_params": current_params}, dbg_text)
 
+
+class SoxUtilAudioReportNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+            },
+            "optional": {
+                "prev_params": ("SOX_PARAMS",),
+                "enable_stats_report": ("BOOLEAN", {"default": True, "tooltip": "Enable running SoX reports (soxi, stats, stat) on audio."}),
+                "enable_soxi": ("BOOLEAN", {"default": True, "tooltip": "Run 'sox --i <file>' for file info (channels, sample rate, duration, etc.)."}),
+                "enable_stats": ("BOOLEAN", {"default": True, "tooltip": "Run 'sox <file> stats' for detailed stats (RMS, peak, etc.)."}),
+                "enable_stat": ("BOOLEAN", {"default": True, "tooltip": "Run 'sox <file> stat' for basic stats (length, samples, etc.)."}),
+            }
+        }
+
+    RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
+    RETURN_NAMES = ("audio", "sox_params", "dbg-text")
+    FUNCTION = "process"
+    CATEGORY = "audio/SoX/Utilities"
+    DESCRIPTION = """Utility node for reporting SoX audio stats. Passes through audio and sox_params. If enable_stats_report=True, runs enabled reports (soxi/stats/stat) on temp audio file and includes outputs in dbg-text. If False, shows command strings only (no execution). dbg-text: Status + prev-params summary + commands/outputs."""
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        """Save tensor to WAV (mono or multi-channel float32)."""
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    def process(self, audio, enable_stats_report=True, enable_soxi=True, enable_stats=True, enable_stat=True, prev_params=None):
+        current_params = prev_params["sox_params"] if prev_params else []
+        processed_audio = audio  # Always pass through
+
+        # Summary of prev-params (readable text)
+        prev_params_text = f"SOX_PARAMS length: {len(current_params)} effects" if current_params else "No prev-params (empty chain)"
+
+        # Temp file setup (use first batch item; assume single for report)
+        tmpdir = tempfile.mkdtemp(prefix='sox_report_')
+        tmp_file = os.path.join(tmpdir, "audio.wav")
+        try:
+            sr = int(audio["sample_rate"])
+            waveform = audio["waveform"][0].squeeze(0)  # First batch; remove batch dim
+            self._save_wav(tmp_file, waveform, sr)
+
+            # Build command strings (always for dbg)
+            commands = []
+            if enable_soxi:
+                soxi_cmd = ["sox", "--i", tmp_file]
+                commands.append(shlex.join(soxi_cmd))
+            if enable_stats:
+                stats_cmd = ["sox", tmp_file, "stats"]
+                commands.append(shlex.join(stats_cmd))
+            if enable_stat:
+                stat_cmd = ["sox", tmp_file, "stat"]
+                commands.append(shlex.join(stat_cmd))
+
+            dbg_lines = [f"*** SoxUtilAudioReport {'Enabled' if enable_stats_report else 'Disabled'} ***"]
+            dbg_lines.append(f"prev-params: {prev_params_text}")
+
+            if not enable_stats_report:
+                # Show commands not run
+                dbg_lines.append("Commands Not Run:")
+                for cmd in commands:
+                    dbg_lines.append(f"- {cmd}")
+            else:
+                # Run enabled commands and capture outputs
+                dbg_lines.append("Commands Run:")
+                report_outputs = []
+                for cmd_str in commands:
+                    full_cmd = shlex.split(cmd_str)
+                    try:
+                        result = subprocess.run(full_cmd, capture_output=True, text=True, check=True)
+                        output = result.stdout.strip() if result.stdout.strip() else "No output (success)"
+                        report_outputs.append(f"{cmd_str}\n{output}")
+                    except subprocess.CalledProcessError as e:
+                        error_msg = f"Error (rc={e.returncode}): {e.stderr.strip() if e.stderr else 'No stderr'}"
+                        report_outputs.append(f"{cmd_str}\n{error_msg}")
+                    dbg_lines.append(f"- {cmd_str}")
+
+                # Append full outputs
+                if report_outputs:
+                    dbg_lines.append("\n".join(report_outputs))
+                else:
+                    dbg_lines.append("No reports enabled.")
+
+        except Exception as e:
+            dbg_lines = [f"*** SoxUtilAudioReport Error ***\nError: {str(e)}"]
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+        dbg_text = "\n".join(dbg_lines)
+        return (processed_audio, {"sox_params": current_params}, dbg_text)
+
 NODE_CLASS_MAPPINGS = {
     "SoxUtilAudioMux5": SoxUtilAudioMux5Node,
     "SoxUtilAudioMuxPro5": SoxUtilAudioMuxPro5Node,
@@ -1356,6 +1462,7 @@ NODE_CLASS_MAPPINGS = {
     "SoxUtilSpectrogram": SoxUtilSpectrogramNode,
     "SoxUtilTextMux5": SoxUtilTextMux5Node,
     "SoxUtilTextMux10": SoxUtilTextMux10Node,
+    "SoxUtilAudioReport": SoxUtilAudioReportNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SoxUtilAudioMux5": "SoX Util Audio Mux 5",
@@ -1365,5 +1472,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "SoxUtilSpectrogram": "Sox Util Spectrogram",
     "SoxUtilTextMux5": "SoX Util Text Mux 5",
     "SoxUtilTextMux10": "SoX Util Text Mux 10",
+    "SoxUtilAudioReport": "SoX Util Audio Report",
 }
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

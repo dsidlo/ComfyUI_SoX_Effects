@@ -1374,16 +1374,22 @@ class SoxUtilAudioReportNode:
 
     @staticmethod
     def _save_wav(filename, tensor, sample_rate):
-        """Save tensor to WAV using torchaudio (reliable multi-ch float32)."""
-        orig_shape = tensor.shape
-        if tensor.dim() == 1:
-            tensor = tensor.unsqueeze(0)  # [T] → [1, T] mono
-        elif tensor.dim() == 3:
-            tensor = tensor[0]  # Take first batch: [B, C, T] → [C, T]
-        elif tensor.dim() != 2:
-            raise ValueError(f"Unexpected tensor dim={tensor.dim()}, shape={orig_shape}; expected 1-3D [B,C,T]")
-        # Now 2D [C, T]; if C==0 or empty, save will handle gracefully
-        torchaudio.save(filename, tensor, sample_rate, format="wav")
+        """Save tensor to WAV (mono or multi-channel float32)."""
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
 
     def process(self, audio, enable_stats_report=True, enable_soxi=True, enable_stats=True, enable_stat=True, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []

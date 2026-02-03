@@ -11,75 +11,16 @@ import shutil
 from PIL import Image
 from .sox_node_utils import SoxNodeUtils as sxu
 
-# TODO: Add a node for down-sampling mono and up-sampling stereo. Controllable with a toggle.
-
-class SoxApplyEffectsNode:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "audio": ("AUDIO",),
-                "enable_apply": ("BOOLEAN", {"default": True, "tooltip": "Enable application of SoX effects"}),
-                "params": ("SOX_PARAMS",),
-            },
-        }
-
-    RETURN_TYPES = ("AUDIO", "STRING")
-    RETURN_NAMES = ("audio", "dbg-text")
-    FUNCTION = "apply_effects"
-    CATEGORY = "audio/SoX/Utilities"
-    DESCRIPTION = "Applies the chained SoX effects parameters to the input audio. dbg-text `string`: full sox command always (pre-execute, survives errors/disable). Wire to PreviewTextNode."
-
-    def apply_effects(self, audio, params, enable_apply=True):
-        waveform = audio["waveform"]
-        sample_rate = audio["sample_rate"]
-
-        sox_cmd_params = params.get("sox_params", [])
-        cmd_str = "sox input.wav output.wav " + shlex.join(
-            sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
-
-        output_waveforms = []
-
-        for i in range(waveform.shape[0]):
-            single_waveform = waveform[i]
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                torchaudio.save(temp_input.name, single_waveform, sample_rate)
-                input_path = temp_input.name
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
-                output_path = temp_output.name
-
-            output_waveforms.append(single_waveform)
-
-            if enable_apply and sox_cmd_params:
-                cmd = ['sox', input_path, output_path] + sox_cmd_params
-                try:
-                    subprocess.run(cmd, check=True, capture_output=True, text=True)
-                    out_waveform, _ = torchaudio.load(output_path)
-                    output_waveforms[-1] = out_waveform
-                except subprocess.CalledProcessError as e:
-                    raise RuntimeError(f"SoX failed: {e.stderr}")
-
-            if os.path.exists(input_path):
-                os.remove(input_path)
-            if os.path.exists(output_path):
-                os.remove(output_path)
-
-        max_samples = max(w.shape[-1] for w in output_waveforms)
-        padded_waveforms = []
-        for w in output_waveforms:
-            padding = max_samples - w.shape[-1]
-            if padding > 0:
-                w = torch.nn.functional.pad(w, (0, padding))
-            padded_waveforms.append(w)
-
-        stacked = torch.stack(padded_waveforms)
-
-        return ({"waveform": stacked, "sample_rate": sample_rate}, cmd_str)
-
+# TODO: Add a node for down-sampling mono and up-sampling stereo.
+#       Controllable with a toggle.
+#
+# TODO: Add a Node the review an audio's "sox --i" stats
+#
+# TODO: Run all stats on a given audio.
+#       sox --i <audio.wav> && sox <audio.wav>  stats stat
 
 class SoxUtilSpectrogramNode:
+    # Tested: DGS v0.1.2
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -92,10 +33,10 @@ class SoxUtilSpectrogramNode:
                 "audio-2": ("AUDIO", {"tooltip": "Audio input 2 for spectrogram (mono auto→stereo)."}),
                 "audio-3": ("AUDIO", {"tooltip": "Audio input 3 for spectrogram (mono auto→stereo)."}),
                 "prev_params": ("SOX_PARAMS",),
-                "enable_x_pixels": ("BOOLEAN", {"default": False,
-                                                "tooltip": "Enable -x: X-axis size in pixels; default derived or 800"}),
                 "---- Window Size ----": ("STRING", {"default": "",
                                                      "tooltip": "Options for Spectrogram window size."}),
+                "enable_x_pixels": ("BOOLEAN", {"default": False,
+                                                "tooltip": "Enable -x: X-axis size in pixels; default derived or 800"}),
                 "x_pixels": ("INT", {"default": 800, "min": 100, "max": 200000, "step": 10,
                                      "tooltip": "X-axis size in pixels; default derived or 800"}),
                 "enable_y_pixels": ("BOOLEAN", {"default": False,
@@ -387,6 +328,7 @@ Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
 
 
 class SoxUtilTextMux5Node:
+    # Tested: DGS v0.1.2
     @classmethod
     def INPUT_TYPES(cls):
         optional = {}
@@ -411,6 +353,7 @@ class SoxUtilTextMux5Node:
 
 
 class SoxUtilTextMux10Node:
+    # Tested: DGS v0.1.2
     @classmethod
     def INPUT_TYPES(cls):
         optional = {}
@@ -435,6 +378,7 @@ class SoxUtilTextMux10Node:
 
 
 class SoxUtilAudioMux5Node:
+    # Tested: DGS v0.1.2
     @classmethod
     def INPUT_TYPES(cls):
         optional = {}
@@ -607,11 +551,7 @@ Empty → dummy zero [1,C,1024]@44.1kHz (C per resample; stereoize if stereo; ga
 
 
 class SoxUtilAudioMuxPro5Node:
-    """
-    TODO: AddUpdae tool-tips
-    # Renamed to SoxUtilAudioMuxPro5 ✓
-    """
-
+    # Tested: DGS v0.1.2
     @classmethod
     def INPUT_TYPES(cls):
         optional = {
@@ -834,7 +774,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
                     target_ch = min(2, max_ch)
         # dbg-text always
         dbg_parts = [
-            f"- enable_mux: {enable_mux}",
+            f"- enable_mux: {self.__class__.__name__} {enable_mux}",
             f"- mute_all: {mute_all}",
             f"- mix_mode: {mix_mode}",
             f"- pad_mode: {pad_mode}",
@@ -859,7 +799,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
             dbg_parts.append(f"- Audio{i + 1}: {info}")
         base_dbg = "\n".join(dbg_parts)
         process_details = ""
-        enabled_prefix = "** Enabled **\n" if enable_mux else ""
+        enabled_prefix = f"*** {self.__class__.__name__} Enabled ***\n" if enable_mux else ""
         if not enable_mux or not active_indices:
             sr = 44100
             dtype = torch.float32
@@ -1250,6 +1190,7 @@ Use `vol_*` dB + presets for balancing; chain `SoxGainNode`/`SoxNormNode` post-m
 
 
 class SoxUtilAudioSplit5Node:
+    # Tested: DGS v0.1.2
     @classmethod
     def INPUT_TYPES(cls):
         optional = {
@@ -1327,7 +1268,8 @@ Input None → 5 dummy zeros [1,C,1024]@44.1kHz (C=1 mono/2 stereo per force_cha
             return tuple(outs)
 
 
-class SoxMuxWetDry:
+class SoxUtilMuxWetDry:
+    # Tested: DGS v0.1.2
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -1378,7 +1320,7 @@ process_mode: torch=tensor (default); sox=future. dbg_text: settings/mode/SR/len
             dbg_prefix = ""
         else:
             mixed = pad_dry * dry_frac + pad_wet * wet_frac
-            dbg_prefix = "** Enabled **\n"
+            dbg_prefix = "*** {self.__class__.__name__} Enabled ***\n"
 
         gain_mult = 10 ** (gain / 20.0)
         mixed = torch.clamp(mixed * gain_mult, -1.0, 1.0)
@@ -1401,28 +1343,27 @@ process_mode: torch=tensor (default); sox=future. dbg_text: settings/mode/SR/len
             f"wet SR: {wet_sr} | dry SR: {sr}",
             f"len: {max_t}",
         ]
-        dbg_prefix = "*** Enabled ***\n" if enable_mix else "--- Disabled ---\n"
+        dbg_prefix = "*** {self.__class__.__name__} Enabled ***\n" if enable_mix else "--- Disabled ---\n"
         dbg_text = dbg_prefix + "\n".join(dbg_parts)
 
         return (audio_mono, audio_stereo, wet_audio, dry_audio, {"sox_params": current_params}, dbg_text)
 
 NODE_CLASS_MAPPINGS = {
-    "SoxApplyEffects": SoxApplyEffectsNode,
-    "SoxUtilSpectrogram": SoxUtilSpectrogramNode,
-    "SoxUtilTextMux10": SoxUtilTextMux10Node,
-    "SoxUtilTextMux5": SoxUtilTextMux5Node,
     "SoxUtilAudioMux5": SoxUtilAudioMux5Node,
     "SoxUtilAudioMuxPro5": SoxUtilAudioMuxPro5Node,
-    "SoxUtilAudioSpli5": SoxUtilAudioSplit5Node,
-    "SoxMuxWetDry": SoxMuxWetDry,
+    "SoxUtilAudioSplit5": SoxUtilAudioSplit5Node,
+    "SoxUtilMuxWetDry": SoxUtilMuxWetDry,
+    "SoxUtilSpectrogram": SoxUtilSpectrogramNode,
+    "SoxUtilTextMux5": SoxUtilTextMux5Node,
+    "SoxUtilTextMux10": SoxUtilTextMux10Node,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "SoxApplyEffects": "SoX Apply Effects",
-    "SoxUtilTextMux10": "SoX Util Text Mux 10",
-    "SoxUtilTextMux5": "SoX Util Text Mux 5",
     "SoxUtilAudioMux5": "SoX Util Audio Mux 5",
     "SoxUtilAudioMuxPro5": "SoX Util Audio Mux Pro 5",
     "SoxUtilAudioSplit5": "SoX Util Audio Split 5",
-    "SoxMuxWetDry": "SoX Mux Wet/Dry",
+    "SoxUtilMuxWetDry": "SoX Util Mux Wet/Dry",
+    "SoxUtilSpectrogram": "Sox Util Spectrogram",
+    "SoxUtilTextMux5": "SoX Util Text Mux 5",
+    "SoxUtilTextMux10": "SoX Util Text Mux 10",
 }
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

@@ -11,6 +11,73 @@ import shutil
 import struct
 from PIL import Image
 
+class SoxApplyEffectsNode:
+    # Tested: DGS v0.1.3
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "enable_apply": ("BOOLEAN", {"default": True, "tooltip": "Enable application of SoX effects"}),
+                "params": ("SOX_PARAMS",),
+            },
+        }
+
+    RETURN_TYPES = ("AUDIO", "STRING")
+    RETURN_NAMES = ("audio", "dbg-text")
+    FUNCTION = "apply_effects"
+    CATEGORY = "audio/SoX/Effects/Apply"
+    DESCRIPTION = "Applies the chained SoX effects parameters to the input audio. dbg-text `string`: full sox command always (pre-execute, survives errors/disable). Wire to PreviewTextNode."
+
+    def apply_effects(self, audio, params, enable_apply=True):
+        waveform = audio["waveform"]
+        sample_rate = audio["sample_rate"]
+
+        sox_cmd_params = params.get("sox_params", [])
+        cmd_str = "sox input.wav output.wav " + shlex.join(
+            sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
+
+        output_waveforms = []
+
+        for i in range(waveform.shape[0]):
+            single_waveform = waveform[i]
+
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+                torchaudio.save(temp_input.name, single_waveform, sample_rate)
+                input_path = temp_input.name
+
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
+                output_path = temp_output.name
+
+            output_waveforms.append(single_waveform)
+
+            if enable_apply and sox_cmd_params:
+                cmd = ['sox', input_path, output_path] + sox_cmd_params
+                try:
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                    out_waveform, _ = torchaudio.load(output_path)
+                    output_waveforms[-1] = out_waveform
+                except subprocess.CalledProcessError as e:
+                    raise RuntimeError(f"SoX failed: {e.stderr}")
+
+            if os.path.exists(input_path):
+                os.remove(input_path)
+            if os.path.exists(output_path):
+                os.remove(output_path)
+
+        max_samples = max(w.shape[-1] for w in output_waveforms)
+        padded_waveforms = []
+        for w in output_waveforms:
+            padding = max_samples - w.shape[-1]
+            if padding > 0:
+                w = torch.nn.functional.pad(w, (0, padding))
+            padded_waveforms.append(w)
+
+        stacked = torch.stack(padded_waveforms)
+
+        return ({"waveform": stacked, "sample_rate": sample_rate}, cmd_str)
+
+
 class SoxAllpassNode:
     @classmethod
     def INPUT_TYPES(cls):
@@ -494,15 +561,15 @@ class SoxGainNode:
         return {
             "required": {
                 "audio": ("AUDIO",),
+            },
+            "optional": {
                 "enable_gain": ("BOOLEAN", {"default": True, "tooltip": "Enable gain effect"}),
-                "gain_mode": (["none", "equalize", "rms_avg_power", "rms_auto_attenuation"], {"default": "none"}),
+                "": (["none", "equalize", "rms_avg_power", "rms_auto_attenuation"], {"default": "none"}),
                 "gain_dB": ("FLOAT", {"default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1}),
                 "normalize": ("BOOLEAN", {"default": False}),
                 "limiter": ("BOOLEAN", {"default": False}),
                 "headroom": ("BOOLEAN", {"default": False}),
                 "reclaim_headroom": ("BOOLEAN", {"default": False}),
-            },
-            "optional": {
                 "prev_params": ("SOX_PARAMS",),
             }
         }
@@ -513,14 +580,14 @@ class SoxGainNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Gain SoX effect node with UI sliders for chaining."
 
-    def process(self, audio, enable_gain=True, gain_mode="none", gain_dB=0.0, normalize=False, limiter=False, headroom=False, reclaim_headroom=False, prev_params=None):
+    def process(self, audio, enable_gain=True, eq_mode="none", gain_dB=0.0, normalize=False, limiter=False, headroom=False, reclaim_headroom=False, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["gain"]
-        if gain_mode == "equalize":
+        if eq_mode == "equalize":
             effect_params.append("-e")
-        elif gain_mode == "rms_avg_power":
+        elif eq_mode == "rms_avg_power":
             effect_params.append("-B")
-        elif gain_mode == "rms_auto_attenuation":
+        elif eq_mode == "rms_auto_attenuation":
             effect_params.append("-b")
         if gain_dB != 0.0:
             effect_params.append(str(gain_dB))
@@ -532,7 +599,7 @@ class SoxGainNode:
             effect_params.append("-h")
         if reclaim_headroom:
             effect_params.append("-r")
-        # Note: -e, -B, -b are mutually exclusive; gain_mode ensures only one. Invalid combos like -l with -n may cause SoX errors.
+        # Note: -e, -B, -b are mutually exclusive; eq_mode ensures only one. Invalid combos like -l with -n may cause SoX errors.
         debug_str = shlex.join(effect_params)
         if enable_gain:
             debug_str = "** Enabled **\n" + debug_str
@@ -2117,6 +2184,7 @@ class SoxTremoloNode:
         return (audio, {"sox_params": current_params}, dbg_text)
 
 NODE_CLASS_MAPPINGS = {
+    "SoxApplyEffects": SoxApplyEffectsNode,
     "SoxAllpass": SoxAllpassNode,
     "SoxBand": SoxBandNode,
     "SoxBandpass": SoxBandpassNode,
@@ -2179,6 +2247,7 @@ NODE_CLASS_MAPPINGS = {
     "SoxVol": SoxVolNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "SoxApplyEffects": "SoX Apply Effects",
     "SoxAllpass": "SoX Allpass",
     "SoxBand": "SoX Band",
     "SoxBandpass": "SoX Bandpass",

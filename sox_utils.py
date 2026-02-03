@@ -1403,7 +1403,7 @@ class SoxUtilAudioReportNode:
         tmp_file = os.path.join(tmpdir, "audio.wav")
         try:
             sr = int(audio["sample_rate"])
-            waveform = audio["waveform"][0].squeeze(0)  # First batch; remove batch dim
+            waveform = audio["waveform"][0]  # First batch; [C, T]
             self._save_wav(tmp_file, waveform, sr)
 
             # Build command strings (always for dbg)
@@ -1412,10 +1412,10 @@ class SoxUtilAudioReportNode:
                 soxi_cmd = ["sox", "--i", tmp_file]
                 commands.append(shlex.join(soxi_cmd))
             if enable_stats:
-                stats_cmd = ["sox", tmp_file, "stats"]
+                stats_cmd = ["sox", tmp_file, "-n", "stats"]
                 commands.append(shlex.join(stats_cmd))
             if enable_stat:
-                stat_cmd = ["sox", tmp_file, "stat"]
+                stat_cmd = ["sox", tmp_file, "-n", "stat"]
                 commands.append(shlex.join(stat_cmd))
 
             dbg_lines = [f"*** SoxUtilAudioReport {'Enabled' if enable_stats_report else 'Disabled'} ***"]

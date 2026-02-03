@@ -1375,8 +1375,17 @@ class SoxUtilAudioReportNode:
     @staticmethod
     def _save_wav(filename, tensor, sample_rate):
         """Save tensor to WAV using torchaudio (reliable multi-ch float32)."""
-        if tensor.dim() == 2:  # [C, T] → [1, C, T]
-            tensor = tensor.unsqueeze(0)
+        orig_shape = tensor.shape
+        if tensor.dim() == 1:
+            tensor = tensor.unsqueeze(0).unsqueeze(0)  # [T] → [1, 1, T]
+        elif tensor.dim() == 2:
+            if tensor.shape[0] == 1:  # Assume [1, T] mono
+                tensor = tensor.unsqueeze(0)  # [1, 1, T]
+            else:  # [C, T] multi
+                tensor = tensor.unsqueeze(0)  # [1, C, T]
+        elif tensor.dim() > 3:
+            raise ValueError(f"Unexpected tensor dim={tensor.dim()}, shape={orig_shape}; expected <=3D [B,C,T]")
+        # If 3D and shape[1]==1, it's [B,1,T] mono
         torchaudio.save(filename, tensor, sample_rate, format="wav")
 
     def process(self, audio, enable_stats_report=True, enable_soxi=True, enable_stats=True, enable_stat=True, prev_params=None):

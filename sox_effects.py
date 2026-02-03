@@ -98,8 +98,8 @@ class SoxAllpassNode:
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Allpass SoX effect node for chaining. dbg-text STRING: 'allpass params' always (pre-extend; '** Enabled **' prefix if on)."
 
-    def process(self, audio, enable_allpass=True, allpass_frequency=1000.0, allpass_width=1.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_allpass=True, allpass_frequency=1000.0, allpass_width=1.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["allpass", str(allpass_frequency), f"{allpass_width}q"]
         debug_str = shlex.join(effect_params)
         if enable_allpass:
@@ -131,8 +131,8 @@ class SoxBandNode:
     DESCRIPTION = "Band SoX effect node for chaining. dbg-text STRING: 'band params' always (pre-extend; '** Enabled **' prefix if on)."
 
     def process(self, audio, enable_band=True, band_narrow=False, band_center=1000.0, band_width=100.0,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["band"]
         if band_narrow:
             effect_params.append("-n")
@@ -166,8 +166,8 @@ class SoxBandpassNode:
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Bandpass SoX effect node for chaining. dbg-text STRING: 'bandpass params' always (pre-extend; '** Enabled **' prefix if on)."
 
-    def process(self, audio, enable_bandpass=True, bandpass_frequency=1000.0, bandpass_width=1.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_bandpass=True, bandpass_frequency=1000.0, bandpass_width=1.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["bandpass", str(bandpass_frequency), f"{bandpass_width}q"]
         debug_str = shlex.join(effect_params)
         if enable_bandpass:
@@ -199,8 +199,8 @@ class SoxBandrejectNode:
     DESCRIPTION = "Bandreject SoX effect node for chaining. dbg-text STRING: 'bandreject params' always (pre-extend; '** Enabled **' prefix if on)."
 
     def process(self, audio, enable_bandreject=True, bandreject_frequency=1000.0, bandreject_width=1.0,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["bandreject", str(bandreject_frequency), f"{bandreject_width}q"]
         debug_str = shlex.join(effect_params)
         if enable_bandreject:
@@ -233,8 +233,8 @@ class SoxBiquadNode:
     DESCRIPTION = "Biquad SoX effect node for chaining. dbg-text STRING: 'biquad params' always (pre-extend; '** Enabled **' prefix if on)."
 
     def process(self, audio, enable_biquad=True, biquad_frequency=1000.0, biquad_gain=0.0, biquad_q=1.0, biquad_norm=1,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["biquad", str(biquad_frequency), str(biquad_gain), str(biquad_q), str(biquad_norm)]
         debug_str = shlex.join(effect_params)
         if enable_biquad:
@@ -263,8 +263,8 @@ class SoxChannelsNode:
     CATEGORY = "audio/SoX/Effects/Channel"
     DESCRIPTION = "Channels SoX effect node for chaining. dbg-text STRING: 'channels params' always (pre-extend; '** Enabled **' prefix if on)."
 
-    def process(self, audio, enable_channels=True, channels_number=2, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_channels=True, channels_number=2, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["channels", str(channels_number)]
         debug_str = shlex.join(effect_params)
         if enable_channels:
@@ -293,8 +293,8 @@ class SoxContrastNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Contrast SoX effect node for chaining. dbg-text STRING: 'contrast params' always (pre-extend; '** Enabled **' prefix if on)."
 
-    def process(self, audio, enable_contrast=True, contrast_enhancement=20.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_contrast=True, contrast_enhancement=20.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["contrast", str(contrast_enhancement)]
         debug_str = shlex.join(effect_params)
         if enable_contrast:
@@ -323,8 +323,8 @@ class SoxDcshiftNode:
     CATEGORY = "audio/SoX/Effects/Noise"
     DESCRIPTION = "Dcshift SoX effect node for chaining. dbg-text STRING: 'dcshift params' always (pre-extend; '** Enabled **' prefix if on)."
 
-    def process(self, audio, enable_dcshift=True, dcshift_amount=0.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_dcshift=True, dcshift_amount=0.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["dcshift", str(dcshift_amount)]
         debug_str = shlex.join(effect_params)
         if enable_dcshift:
@@ -353,8 +353,8 @@ class SoxDeemphNode:
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Deemph SoX effect node for chaining. dbg-text STRING: 'deemph params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
-    def process(self, audio, enable_deemph=True, deemph_profile="ccir", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_deemph=True, deemph_profile="ccir", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["deemph", deemph_profile]
         debug_str = shlex.join(effect_params)
         if enable_deemph:
@@ -384,8 +384,8 @@ class SoxDelayNode:
     CATEGORY = "audio/SoX/Effects/Other"
     DESCRIPTION = "Delay SoX effect node for chaining. dbg-text STRING: 'delay params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
-    def process(self, audio, enable_delay=True, delay_length=500.0, delay_pad=500.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_delay=True, delay_length=500.0, delay_pad=500.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["delay", str(delay_length), str(delay_pad)]
         debug_str = shlex.join(effect_params)
         if enable_delay:
@@ -415,8 +415,8 @@ class SoxDitherNode:
     CATEGORY = "audio/SoX/Effects/Noise"
     DESCRIPTION = "Dither SoX effect node for chaining. dbg-text STRING: 'dither params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
-    def process(self, audio, enable_dither=True, dither_type="s", dither_depth=6, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_dither=True, dither_type="s", dither_depth=6, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["dither", "-" + dither_type, str(dither_depth)]
         debug_str = shlex.join(effect_params)
         if enable_dither:
@@ -445,8 +445,8 @@ class SoxDownsampleNode:
     CATEGORY = "audio/SoX/Effects/Other"
     DESCRIPTION = "Downsample SoX effect node for chaining. dbg-text `STRING`: 'downsample params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
-    def process(self, audio, enable_downsample=True, downsample_factor=2, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_downsample=True, downsample_factor=2, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["downsample", str(downsample_factor)]
         debug_str = shlex.join(effect_params)
         if enable_downsample:
@@ -474,8 +474,8 @@ class SoxEarwaxNode:
     CATEGORY = "audio/SoX/Effects/Modulation"
     DESCRIPTION = "Earwax SoX effect node for chaining. dbg-text `STRING`: 'earwax params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
-    def process(self, audio, enable_earwax=True, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_earwax=True, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["earwax"]
         debug_str = shlex.join(effect_params)
         if enable_earwax:
@@ -507,8 +507,8 @@ class SoxFadeNode:
     DESCRIPTION = "Fade SoX effect node for chaining. dbg-text `STRING`: 'fade params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_fade=True, fade_type="h", fade_in_length=0.5, fade_out_length=0.5,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["fade", fade_type]
         if fade_in_length > 0:
             effect_params.append(str(fade_in_length))
@@ -530,7 +530,7 @@ class SoxFirNode:
         fir_files = []
         if os.path.exists(fir_coeffs_dir) and os.path.isdir(fir_coeffs_dir):
             with os.scandir(fir_coeffs_dir) as entries:
-                fir_files = [entry.name for entry in entries if entry.is_file()]
+                fir_files = [entry.name for entry in entries if entry.is_file() and entry.name.endswith(".fir")]
         # sort fir_files by name
         fir_files.sort()
 
@@ -553,17 +553,17 @@ class SoxFirNode:
 
     # python
     # python
-    def process(self, audio, enable_fir=True, fir_coefficients="", prev_params=None):
+    def process(self, audio, enable_fir=True, fir_coefficients="", sox_params=None):
         fir_coeffs_dir = "custom_nodes/ComfyUI_SoX_Effects/fir_coeffs/"
         fir_file_map = {}
         if os.path.exists(fir_coeffs_dir) and os.path.isdir(fir_coeffs_dir):
             with os.scandir(fir_coeffs_dir) as entries:
                 for entry in entries:
-                    if entry.is_file():
+                    if entry.is_file() and entry.name.endswith(".fir"):
                         # store absolute path to ensure full filepath is used later
                         fir_file_map[entry.name] = os.path.abspath(entry.path)
 
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+        current_params = sox_params["sox_params"] if sox_params is not None else []
 
         effect_params = ["fir"] + [fir_file_map[fir_coefficients]]
 
@@ -600,8 +600,8 @@ class SoxGainNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Gain SoX effect node with UI sliders for chaining."
 
-    def process(self, audio, enable_gain=True, eq_mode="none", gain_dB=0.0, normalize=False, limiter=False, headroom=False, reclaim_headroom=False, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params else []
+    def process(self, audio, enable_gain=True, eq_mode="none", gain_dB=0.0, normalize=False, limiter=False, headroom=False, reclaim_headroom=False, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params else []
         effect_params = ["gain"]
         if eq_mode == "equalize":
             effect_params.append("-e")
@@ -647,8 +647,8 @@ class SoxHilbertNode:
     CATEGORY = "audio/SoX/Effects/Other"
     DESCRIPTION = "Hilbert SoX effect node for chaining."
 
-    def process(self, audio, enable_hilbert=True, hilbert_window=64, hilbert_halflen=16, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_hilbert=True, hilbert_window=64, hilbert_halflen=16, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_hilbert:
             effect_params = ["hilbert", str(hilbert_window), str(hilbert_halflen)]
             current_params.extend(effect_params)
@@ -674,8 +674,8 @@ class SoxLadspaNode:
     CATEGORY = "audio/SoX/Effects/Other"
     DESCRIPTION = "Ladspa SoX effect node for chaining (plugin label params)."
 
-    def process(self, audio, enable_ladspa=True, ladspa_params="", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_ladspa=True, ladspa_params="", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_ladspa and ladspa_params.strip():
             params = shlex.split(ladspa_params.strip())
             effect_params = ["ladspa"] + params
@@ -703,8 +703,8 @@ class SoxLoudnessNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Loudness SoX effect node for chaining."
 
-    def process(self, audio, enable_loudness=True, loudness_gain=4.0, loudness_volume=12.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_loudness=True, loudness_gain=4.0, loudness_volume=12.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_loudness:
             effect_params = ["loudness", str(loudness_gain), str(loudness_volume)]
             current_params.extend(effect_params)
@@ -730,8 +730,8 @@ class SoxMcompandNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Mcompand SoX effect node for chaining (multi-band compand params)."
 
-    def process(self, audio, enable_mcompand=True, mcompand_params="", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_mcompand=True, mcompand_params="", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_mcompand and mcompand_params.strip():
             params = shlex.split(mcompand_params.strip())
             effect_params = ["mcompand"] + params
@@ -758,8 +758,8 @@ class SoxNoiseprofNode:
     CATEGORY = "audio/SoX/Effects/Noise"
     DESCRIPTION = "Noiseprof SoX effect node for chaining (generates noise profile)."
 
-    def process(self, audio, enable_noiseprof=True, noiseprof_noise_file="", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_noiseprof=True, noiseprof_noise_file="", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_noiseprof:
             effect_params = ["noiseprof"]
             if noiseprof_noise_file:
@@ -791,8 +791,8 @@ class SoxNoiseredNode:
     DESCRIPTION = "Noisered SoX effect node for chaining."
 
     def process(self, audio, enable_noisered=True, noisered_profile="", noisered_amount=0.21, noisered_precision=4,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_noisered:
             effect_params = ["noisered"]
             if noisered_profile:
@@ -823,8 +823,8 @@ class SoxNormNode:
     CATEGORY = "audio/SoX/Effects/Dynamics"
     DESCRIPTION = "Norm SoX effect node for chaining."
 
-    def process(self, audio, enable_norm=True, norm_type="", norm_level=-3.0, norm_precision=0.1, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_norm=True, norm_type="", norm_level=-3.0, norm_precision=0.1, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_norm:
             effect_params = ["norm"]
             if norm_type:
@@ -853,8 +853,8 @@ class SoxOopsNode:
     CATEGORY = "audio/SoX/Effects/Other"
     DESCRIPTION = "Oops SoX effect node for chaining."
 
-    def process(self, audio, enable_oops=True, oops_threshold=0.8, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_oops=True, oops_threshold=0.8, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_oops:
             effect_params = ["oops", str(oops_threshold)]
             current_params.extend(effect_params)
@@ -881,8 +881,8 @@ class SoxPadNode:
     CATEGORY = "audio/SoX/Effects/Envelope"
     DESCRIPTION = "Pad SoX effect node for chaining."
 
-    def process(self, audio, enable_pad=True, pad_intro=0.0, pad_outro=0.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_pad=True, pad_intro=0.0, pad_outro=0.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_pad:
             effect_params = ["pad", str(pad_intro), str(pad_outro)]
             current_params.extend(effect_params)
@@ -908,8 +908,8 @@ class SoxRateNode:
     CATEGORY = "audio/SoX/Effects/Pitch"
     DESCRIPTION = "Rate SoX effect node for chaining."
 
-    def process(self, audio, enable_rate=True, rate_quality="q", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_rate=True, rate_quality="q", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_rate:
             effect_params = ["rate", "-v", rate_quality]
             current_params.extend(effect_params)
@@ -936,8 +936,8 @@ class SoxRemixNode:
     CATEGORY = "audio/SoX/Effects/Channel"
     DESCRIPTION = "Remix SoX effect node for chaining."
 
-    def process(self, audio, enable_remix=True, remix_mode="", remix_gains="1.0", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_remix=True, remix_mode="", remix_gains="1.0", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_remix:
             gains = shlex.split(remix_gains.strip())
             effect_params = ["remix"]
@@ -967,8 +967,8 @@ class SoxRepeatNode:
     CATEGORY = "audio/SoX/Effects/Other"
     DESCRIPTION = "Repeat SoX effect node for chaining."
 
-    def process(self, audio, enable_repeat=True, repeat_count=1, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_repeat=True, repeat_count=1, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_repeat:
             effect_params = ["repeat", str(repeat_count)]
             current_params.extend(effect_params)
@@ -993,8 +993,8 @@ class SoxReverseNode:
     CATEGORY = "audio/SoX/Effects/Channel"
     DESCRIPTION = "Reverse SoX effect node for chaining."
 
-    def process(self, audio, enable_reverse=True, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_reverse=True, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_reverse:
             effect_params = ["reverse"]
             current_params.extend(effect_params)
@@ -1020,8 +1020,8 @@ class SoxRiaaNode:
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Riaa SoX effect node for chaining."
 
-    def process(self, audio, enable_riaa=True, riaa_pre=False, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_riaa=True, riaa_pre=False, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_riaa:
             effect_params = ["riaa"]
             if riaa_pre:
@@ -1050,8 +1050,8 @@ class SoxSilenceNode:
     CATEGORY = "audio/SoX/Effects/Envelope"
     DESCRIPTION = "Silence SoX effect node for chaining."
 
-    def process(self, audio, enable_silence=True, silence_above=0.01, silence_duration=0.1, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_silence=True, silence_above=0.01, silence_duration=0.1, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_silence:
             effect_params = ["silence", "1", str(silence_duration), f"{silence_above}%"]
             current_params.extend(effect_params)
@@ -1077,8 +1077,8 @@ class SoxSincNode:
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Sinc SoX effect node for chaining."
 
-    def process(self, audio, enable_sinc=True, sinc_frequency=8000.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_sinc=True, sinc_frequency=8000.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_sinc:
             effect_params = ["sinc", str(sinc_frequency)]
             current_params.extend(effect_params)
@@ -1104,8 +1104,8 @@ class SoxSpeedNode:
     CATEGORY = "audio/SoX/Effects/Pitch"
     DESCRIPTION = "Speed SoX effect node for chaining."
 
-    def process(self, audio, enable_speed=True, speed_factor=1.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_speed=True, speed_factor=1.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_speed:
             effect_params = ["speed", str(speed_factor)]
             current_params.extend(effect_params)
@@ -1132,8 +1132,8 @@ class SoxSpliceNode:
     CATEGORY = "audio/SoX/Effects/Envelope"
     DESCRIPTION = "Splice SoX effect node for chaining."
 
-    def process(self, audio, enable_splice=True, splice_start=0.0, splice_duration=1.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_splice=True, splice_start=0.0, splice_duration=1.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_splice:
             effect_params = ["splice", str(splice_start), str(splice_duration)]
             current_params.extend(effect_params)
@@ -1159,8 +1159,8 @@ class SoxStatNode:
     CATEGORY = "audio/SoX/Effects/Visualization"
     DESCRIPTION = "Stat SoX effect node for chaining (audio stats)."
 
-    def process(self, audio, enable_stat=True, stat_tags="", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_stat=True, stat_tags="", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_stat:
             tags = shlex.split(stat_tags.strip())
             effect_params = ["stat"] + tags
@@ -1187,8 +1187,8 @@ class SoxStatsNode:
     CATEGORY = "audio/SoX/Effects/Visualization"
     DESCRIPTION = "Stats SoX effect node for chaining."
 
-    def process(self, audio, enable_stats=True, stats_tag="", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_stats=True, stats_tag="", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_stats:
             effect_params = ["stats"]
             if stats_tag:
@@ -1217,8 +1217,8 @@ class SoxStretchNode:
     CATEGORY = "audio/SoX/Effects/Pitch"
     DESCRIPTION = "Stretch SoX effect node for chaining."
 
-    def process(self, audio, enable_stretch=True, stretch_factor=1.0, stretch_fadelen=0.05, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_stretch=True, stretch_factor=1.0, stretch_fadelen=0.05, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_stretch:
             effect_params = ["stretch", str(stretch_factor), str(stretch_fadelen)]
             current_params.extend(effect_params)
@@ -1244,8 +1244,8 @@ class SoxSwapNode:
     CATEGORY = "audio/SoX/Effects/Channel"
     DESCRIPTION = "Swap SoX effect node for chaining."
 
-    def process(self, audio, enable_swap=True, swap_operation=1, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_swap=True, swap_operation=1, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_swap:
             effect_params = ["swap", str(swap_operation)]
             current_params.extend(effect_params)
@@ -1271,8 +1271,8 @@ class SoxSynthNode:
     CATEGORY = "audio/SoX/Effects/Modulation"
     DESCRIPTION = "Synth SoX effect node for chaining (generator)."
 
-    def process(self, audio, enable_synth=True, synth_params="", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_synth=True, synth_params="", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_synth and synth_params.strip():
             params = shlex.split(synth_params.strip())
             effect_params = ["synth"] + params
@@ -1300,8 +1300,8 @@ class SoxTrimNode:
     CATEGORY = "audio/SoX/Effects/Envelope"
     DESCRIPTION = "Trim SoX effect node for chaining."
 
-    def process(self, audio, enable_trim=True, trim_start=0.0, trim_end=0.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_trim=True, trim_start=0.0, trim_end=0.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_trim:
             effect_params = ["trim"]
             effect_params.append(str(trim_start))
@@ -1330,8 +1330,8 @@ class SoxUpsampleNode:
     CATEGORY = "audio/SoX/Effects/Other"
     DESCRIPTION = "Upsample SoX effect node for chaining."
 
-    def process(self, audio, enable_upsample=True, upsample_factor=2, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_upsample=True, upsample_factor=2, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_upsample:
             effect_params = ["upsample", str(upsample_factor)]
             current_params.extend(effect_params)
@@ -1367,8 +1367,8 @@ class SoxVadNode:
 - Best early: Clean raw audio (podcasts/vocals) before mixing/gain/EQ.
 - Output: Unchanged AUDIO + updated SOX_PARAMS."""
 
-    def process(self, audio, enable_vad=True, vad_threshold=0.5, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_vad=True, vad_threshold=0.5, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_vad:
             effect_params = ["vad", f"-t {vad_threshold}"]
             current_params.extend(effect_params)
@@ -1404,8 +1404,8 @@ class SoxVolNode:
 - Best mid-chain: Balance after trim (VAD), before compression/mix. Prevents overload with negative gain.
 - Output: Unchanged AUDIO + updated SOX_PARAMS."""
 
-    def process(self, audio, enable_vol=True, vol_gain=0.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_vol=True, vol_gain=0.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_vol:
             effect_params = ["vol", str(vol_gain)]
             current_params.extend(effect_params)
@@ -1435,8 +1435,8 @@ class SoxBassNode:
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Bass SoX effect node for chaining. dbg-text STRING: 'bass params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
-    def process(self, audio, enable_bass=True, bass_gain=0.0, bass_frequency=100.0, bass_width=0.5, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_bass=True, bass_gain=0.0, bass_frequency=100.0, bass_width=0.5, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["bass", str(bass_gain), str(bass_frequency), str(bass_width)]
         debug_str = shlex.join(effect_params)
         if enable_bass:
@@ -1471,8 +1471,8 @@ class SoxBendNode:
     DESCRIPTION = "Bend SoX effect node for chaining. dbg-text STRING: 'bend params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_bend=True, bend_frame_rate=25, bend_over_sample=16, bend_start_time=0.0,
-                bend_cents=0.0, bend_end_time=0.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                bend_cents=0.0, bend_end_time=0.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["bend"]
         if bend_frame_rate != 25:
             effect_params += ["-f", str(bend_frame_rate)]
@@ -1533,8 +1533,8 @@ class SoxChorusNode:
                 chorus_delay_2=0.0, chorus_decay_2=0.0, chorus_speed_2=0.0, chorus_depth_2=0.0, chorus_shape_2="sin",
                 chorus_delay_3=0.0, chorus_decay_3=0.0, chorus_speed_3=0.0, chorus_depth_3=0.0, chorus_shape_3="sin",
                 chorus_delay_4=0.0, chorus_decay_4=0.0, chorus_speed_4=0.0, chorus_depth_4=0.0, chorus_shape_4="sin",
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["chorus", str(chorus_gain_in), str(chorus_gain_out)]
         taps = []
         for delay, decay, speed, depth, shape in [
@@ -1617,7 +1617,7 @@ class SoxCompandNode:
                 compand_init_vol=0.0,
                 compand_enable_delay=False,
                 compand_delay=0.0,
-                prev_params=None):
+                sox_params=None):
         # Clamp time parameters to >= 0.0 for valid SoX args
         compand_attack_1 = max(0.0, compand_attack_1)
         compand_decay_1 = max(0.0, compand_decay_1)
@@ -1627,7 +1627,7 @@ class SoxCompandNode:
         compand_decay_3 = max(0.0, compand_decay_3)
         compand_soft_knee = max(0.0, compand_soft_knee)
         compand_delay = max(0.0, compand_delay)
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         debug_str = "Compand disabled"
         if enable_compand:
             attack_decay_parts = [f"{compand_attack_1},{compand_decay_1}"]
@@ -1713,8 +1713,8 @@ class SoxEchoNode:
                 echo_delay_2=0.0, echo_decay_2=0.0,
                 echo_delay_3=0.0, echo_decay_3=0.0,
                 echo_delay_4=0.0, echo_decay_4=0.0,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         # Compute debug always
         taps = []
         for delay, decay in [(echo_delay_1, echo_decay_1),
@@ -1766,8 +1766,8 @@ class SoxEchosNode:
                 echos_delay_2=0.0, echos_decay_2=0.0,
                 echos_delay_3=0.0, echos_decay_3=0.0,
                 echos_delay_4=0.0, echos_decay_4=0.0,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         taps = []
         for delay, decay in [(echos_delay_1, echos_decay_1),
                              (echos_delay_2, echos_decay_2),
@@ -1808,8 +1808,8 @@ class SoxEqualizerNode:
     DESCRIPTION = "Equalizer SoX effect node for chaining."
 
     def process(self, audio, enable_equalizer=True, equalizer_frequency=1000.0, equalizer_width=1.0, equalizer_gain=0.0,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_equalizer:
             effect_params = ["equalizer", str(equalizer_frequency), str(equalizer_width) + "q", str(equalizer_gain)]
             current_params.extend(effect_params)
@@ -1872,8 +1872,8 @@ interp   --    lin   delay-line interpolation: linear|quadratic"""}),
 
     def process(self, audio, enable_flanger=True, flanger_delay=0.0, flanger_depth=2.0, flanger_regen=0.0,
                 flanger_width=71.0, flanger_speed=0.5, flanger_shape="sinusoidal", flanger_phase=25,
-                flanger_interp="linear", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                flanger_interp="linear", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         shape_str = "sin" if flanger_shape == "sinusoidal" else "tri"
         interp_str = "lin" if flanger_interp == "linear" else "quad"
         effect_params = ["flanger",
@@ -1910,8 +1910,8 @@ class SoxHighpassNode:
     DESCRIPTION = "Highpass SoX effect node for chaining."
 
     def process(self, audio, enable_highpass=True, highpass_poles=2, highpass_frequency=3000.0, highpass_width=0.707,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_highpass:
             poles = "-1" if highpass_poles == 1 else "-2"
             effect_params = ["highpass", poles, str(highpass_frequency), str(highpass_width) + "q"]
@@ -1942,8 +1942,8 @@ class SoxLowpassNode:
     DESCRIPTION = "Lowpass SoX effect node for chaining."
 
     def process(self, audio, enable_lowpass=True, lowpass_poles=2, lowpass_frequency=1000.0, lowpass_width=0.707,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_lowpass:
             poles = "-1" if lowpass_poles == 1 else "-2"
             effect_params = ["lowpass", poles, str(lowpass_frequency), str(lowpass_width) + "q"]
@@ -1971,8 +1971,8 @@ class SoxOverdriveNode:
     CATEGORY = "audio/SoX/Effects/Reverb"
     DESCRIPTION = "Overdrive SoX effect node for chaining."
 
-    def process(self, audio, enable_overdrive=True, overdrive_gain=20.0, overdrive_colour=20.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_overdrive=True, overdrive_gain=20.0, overdrive_colour=20.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_overdrive:
             effect_params = ["overdrive", str(overdrive_gain), str(overdrive_colour)]
             current_params.extend(effect_params)
@@ -2005,8 +2005,8 @@ class SoxPhaserNode:
     DESCRIPTION = "Phaser SoX effect node for chaining."
 
     def process(self, audio, enable_phaser=True, phaser_gain_in=0.8, phaser_gain_out=0.74, phaser_delay=3.0,
-                phaser_decay=0.4, phaser_speed=0.5, phaser_mod="sinusoidal", prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                phaser_decay=0.4, phaser_speed=0.5, phaser_mod="sinusoidal", sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_phaser:
             mod = "-s" if phaser_mod == "sinusoidal" else "-t"
             effect_params = ["phaser",
@@ -2043,8 +2043,8 @@ class SoxPitchNode:
     DESCRIPTION = "Pitch SoX effect node for chaining."
 
     def process(self, audio, enable_pitch=True, pitch_q=False, pitch_shift=0, pitch_segment=82.0, pitch_search=14.0,
-                pitch_overlap=12.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                pitch_overlap=12.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_pitch:
             effect_params = ["pitch"]
             if pitch_q:
@@ -2084,8 +2084,8 @@ class SoxReverbNode:
 
     def process(self, audio, enable_reverb=True, reverb_wet_only=False, reverb_reverberance=50.0,
                 reverb_hf_damping=50.0, reverb_room_scale=100.0, reverb_stereo_depth=100.0, reverb_pre_delay=0.0,
-                reverb_wet_gain=0.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                reverb_wet_gain=0.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_reverb:
             effect_params = ["reverb"]
             if reverb_wet_only:
@@ -2124,8 +2124,8 @@ class SoxTempoNode:
     DESCRIPTION = "Tempo SoX effect node for chaining."
 
     def process(self, audio, enable_tempo=True, tempo_q=False, tempo_factor=1.0, tempo_segment=82.0, tempo_search=14.0,
-                tempo_overlap=12.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                tempo_overlap=12.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         if enable_tempo:
             effect_params = ["tempo"]
             if tempo_q:
@@ -2161,8 +2161,8 @@ class SoxTrebleNode:
     DESCRIPTION = "Treble SoX effect node for chaining. dbg-text `string`: 'treble params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
     def process(self, audio, enable_treble=True, treble_gain=0.0, treble_frequency=3000.0, treble_width=0.5,
-                prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+                sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["treble", str(treble_gain), str(treble_frequency), str(treble_width)]
         debug_str = shlex.join(effect_params)
         if enable_treble:
@@ -2191,8 +2191,8 @@ class SoxTremoloNode:
     CATEGORY = "audio/SoX/Effects/Modulation"
     DESCRIPTION = "Tremolo SoX effect node for chaining."
 
-    def process(self, audio, enable_tremolo=True, tremolo_speed=0.5, tremolo_depth=40.0, prev_params=None):
-        current_params = prev_params["sox_params"] if prev_params is not None else []
+    def process(self, audio, enable_tremolo=True, tremolo_speed=0.5, tremolo_depth=40.0, sox_params=None):
+        current_params = sox_params["sox_params"] if sox_params is not None else []
         effect_params = ["tremolo", str(tremolo_speed), str(tremolo_depth)]
         cmd_str = f"sox voice.wav vibrato.wav {' '.join(effect_params)}"
         dbg_text = cmd_str

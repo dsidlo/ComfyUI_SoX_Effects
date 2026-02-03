@@ -46,9 +46,20 @@ Requires Torch Audio.
 
 Auto Volume Balance Detection for RMS Power and Max Amplitude mixing modes.
 
-## Working on...
+## Progress...
 
-Silly me... I just realized that many sox effect are already implemented in torchaudio.sox_effects so it makes sense to use torch-audio for audio processing where possible and keep the sox implmentation for any missing from the torchaudio library.
+### Tested and Refined
+
+SoxUtilSpectrogramNode, SoxUtilTextMux5Node, SoxUtilTextMux10Node
+SoxUtilAudioMux5Node, SoxUtilAudioMuxPro5Node, SoxUtilAudioSplit5Node
+SoxUtilAudioReportNode, SoxApplyEffectsNode, SoxFirNode, SoxVeDeepOldManNode
+SoxVeGhostNode
+
+#### Notable
+
+SoxFirNode:
+  - Added dropdown of 38 fir_coefficient room acoustics files.
+    - Each fir_coefficient file contains the fir coefficients for an environment type or room, modifying audio sound with that rooms acoustics.
 
 ## Future work
 

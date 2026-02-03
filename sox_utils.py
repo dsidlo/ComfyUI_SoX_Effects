@@ -8,6 +8,7 @@ import numpy as np
 import uuid
 import re
 import shutil
+import struct
 from PIL import Image
 from .sox_node_utils import SoxNodeUtils as sxu
 

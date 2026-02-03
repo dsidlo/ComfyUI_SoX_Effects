@@ -133,19 +133,9 @@ Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
 
         # Single audio input handling
         audios_for_spec = []
-        audio_out = None
         for n_str in ["0", "1", "2", "3"]:
             audio_n = kwargs.get(f"audio-{n_str}", None)
             if audio_n is not None:
-                if audio_out is None:
-                    # First non-None for passthrough AUDIO out (stereoized)
-                    w_out = audio_n["waveform"][0:1]
-                    orig_ch_out = w_out.shape[1]
-                    if orig_ch_out == 1:
-                        w_out = w_out.repeat(1, 2, 1)
-                    else:
-                        w_out = w_out[:, :2, :]
-                    audio_out = {"waveform": w_out, "sample_rate": audio_n["sample_rate"]}
                 # Per-input spec prep (stereoized)
                 w_spec = audio_n["waveform"][0:1]
                 orig_ch_spec = w_spec.shape[1]
@@ -157,9 +147,6 @@ Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
                 label = f"audio-{n_str}"
                 audios_for_spec.append(
                     (label, {"waveform": w_spec, "sample_rate": audio_n["sample_rate"]}, ch_type, n_str))
-        if audio_out is None:
-            dummy_w = torch.zeros((1, 2, 44100), dtype=torch.float32)  # stereo dummy
-            audio_out = {"waveform": dummy_w, "sample_rate": 44100}
 
         # Build options
         options = []
@@ -212,9 +199,7 @@ Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
         saved_msgs = []
         errors = []
 
-        # Prepare audio_out and image_out
-
-        # Prepare audio_out and image_out
+        # Prepare image_out
         if not enable_spectrogram or len(audios_for_spec) == 0:
             image_out = torch.zeros((1, 257, 800, 3), dtype=torch.uint8)
         else:
@@ -325,7 +310,7 @@ Passthrough first stereoized AUDIO + `SOX_PARAMS` (temp preview)."""
         if saved_msgs:
             dbg_text += "\n" + "\n".join(saved_msgs)
 
-        return (audio_out, image_out, {"sox_params": current_params}, dbg_text)
+        return (image_out, {"sox_params": current_params}, dbg_text)
 
 
 class SoxUtilTextMux5Node:
@@ -1351,6 +1336,7 @@ process_mode: torch=tensor (default); sox=future. dbg_text: settings/mode/SR/len
 
 
 class SoxUtilAudioReportNode:
+    # Tested: DGS v0.1.3
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -1370,7 +1356,12 @@ class SoxUtilAudioReportNode:
     RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Utilities"
-    DESCRIPTION = """Utility node for reporting SoX audio stats. Passes through audio and sox_params. If enable_stats_report=True, runs enabled reports (soxi/stats/stat) on temp audio file and includes outputs in dbg-text. If False, shows command strings only (no execution). dbg-text: Status + prev-params summary + commands/outputs."""
+    DESCRIPTION = """Utility node for reporting SoX audio stats. 
+      - Passes through audio and sox_params. 
+      - If enable_stats_report=True, runs enabled reports (soxi/stats/stat) on 
+        temp audio file and includes outputs in dbg-text. 
+        If False, shows command strings only (no execution). 
+      - dbg-text: Status + prev-params summary + commands/outputs."""
 
     @staticmethod
     def _save_wav(filename, tensor, sample_rate):
@@ -1434,9 +1425,9 @@ class SoxUtilAudioReportNode:
                     full_cmd = shlex.split(cmd_str)
                     try:
                         result = subprocess.run(full_cmd, capture_output=True, text=True, check=True)
-                        output = result.stdout.strip() if result.stdout.strip() else "No output (success)"
+                        output = result.stdout.strip() if result.stdout.strip() else "(success)"
                         if result.stderr.strip():
-                            output += f"\n[STDERR] {result.stderr.strip()}"
+                            output += f"\n[From: STDERR]\n{result.stderr.strip()}"
                         report_outputs.append(f"===== {cmd_str}\n{output}")
                     except subprocess.CalledProcessError as e:
                         error_msg = f"Error (rc={e.returncode}): {e.stderr.strip() if e.stderr else 'No stderr'}"

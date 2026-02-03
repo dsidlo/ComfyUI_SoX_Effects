@@ -89,11 +89,11 @@ class SoxAllpassNode:
                 "allpass_width": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
-    RETURN_NAMES = ("audio", "sox_params", "dbg-text")
+    RETURN_NAMES = ("audio", "SOX_PARAMS", "dbg-text")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Allpass SoX effect node for chaining. dbg-text STRING: 'allpass params' always (pre-extend; '** Enabled **' prefix if on)."
@@ -120,7 +120,7 @@ class SoxBandNode:
                 "band_width": ("FLOAT", {"default": 100.0, "min": 1.0, "max": 10000.0, "step": 1.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -156,7 +156,7 @@ class SoxBandpassNode:
                 "bandpass_width": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -188,7 +188,7 @@ class SoxBandrejectNode:
                 "bandreject_width": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -222,7 +222,7 @@ class SoxBiquadNode:
                 "biquad_norm": ("INT", {"default": 1, "min": 0, "max": 1, "step": 1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -253,7 +253,7 @@ class SoxChannelsNode:
                 "channels_number": ("INT", {"default": 2, "min": 1, "max": 8, "step": 1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -283,7 +283,7 @@ class SoxContrastNode:
                 "contrast_enhancement": ("FLOAT", {"default": 20.0, "min": 0.0, "max": 100.0, "step": 1.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -313,7 +313,7 @@ class SoxDcshiftNode:
                 "dcshift_amount": ("FLOAT", {"default": 0.0, "min": -100.0, "max": 100.0, "step": 0.1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -343,7 +343,7 @@ class SoxDeemphNode:
                 "deemph_profile": (["ccir", "50us", "75us", "15khz"], {"default": "ccir"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -374,7 +374,7 @@ class SoxDelayNode:
                 "delay_pad": ("FLOAT", {"default": 500.0, "min": 0.0, "max": 10000.0, "step": 1.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -405,7 +405,7 @@ class SoxDitherNode:
                 "dither_depth": ("INT", {"default": 6, "min": 1, "max": 24, "step": 1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -435,7 +435,7 @@ class SoxDownsampleNode:
                 "downsample_factor": ("int", {"default": 2, "min": 1, "max": 32, "step": 1}),
             },
             "optional": {
-                "prev_params": ("sox_params",),
+                "sox_params": ("sox_params",),
             }
         }
 
@@ -464,7 +464,7 @@ class SoxEarwaxNode:
                 "enable_earwax": ("boolean", {"default": True, "tooltip": "earwax"}),
             },
             "optional": {
-                "prev_params": ("sox_params",),
+                "sox_params": ("sox_params",),
             }
         }
 
@@ -496,7 +496,7 @@ class SoxFadeNode:
                 "fade_out_length": ("float", {"default": 0.5, "min": 0.0, "max": 60.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("sox_params",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -522,16 +522,26 @@ class SoxFadeNode:
 
 
 class SoxFirNode:
+    # Tested: DGS v0.1.3
     @classmethod
     def INPUT_TYPES(cls):
+        # Get filename from ./fir_coeffs/
+        fir_coeffs_dir = "custom_nodes/ComfyUI_SoX_Effects/fir_coeffs/"
+        fir_files = []
+        if os.path.exists(fir_coeffs_dir) and os.path.isdir(fir_coeffs_dir):
+            with os.scandir(fir_coeffs_dir) as entries:
+                fir_files = [entry.name for entry in entries if entry.is_file()]
+        # sort fir_files by name
+        fir_files.sort()
+
         return {
             "required": {
-                "audio": ("audio",),
-                "enable_fir": ("boolean", {"default": True, "tooltip": "fir [coefficients]"}),
-                "fir_coefficients": ("string", {"multiline": True, "default": ""}),
+                "audio": ("AUDIO",),
+                "enable_fir": ("BOOLEAN", {"default": True, "tooltip": "Enable/Disable SoxFirNode"}),
+                "fir_coefficients": (fir_files, {"multiline": True, "default": fir_files[0]}),
             },
             "optional": {
-                "prev_params": ("sox_params",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -541,17 +551,27 @@ class SoxFirNode:
     CATEGORY = "audio/SoX/Effects/Equalization"
     DESCRIPTION = "Fir SoX effect node for chaining (provide coefficients). dbg-text `string`: 'fir params' always (pre-extend; '** Enabled **' prefix if on). Wire to PreviewTextNode."
 
+    # python
+    # python
     def process(self, audio, enable_fir=True, fir_coefficients="", prev_params=None):
+        fir_coeffs_dir = "custom_nodes/ComfyUI_SoX_Effects/fir_coeffs/"
+        fir_file_map = {}
+        if os.path.exists(fir_coeffs_dir) and os.path.isdir(fir_coeffs_dir):
+            with os.scandir(fir_coeffs_dir) as entries:
+                for entry in entries:
+                    if entry.is_file():
+                        # store absolute path to ensure full filepath is used later
+                        fir_file_map[entry.name] = os.path.abspath(entry.path)
+
         current_params = prev_params["sox_params"] if prev_params is not None else []
-        if fir_coefficients.strip():
-            coeffs = shlex.split(fir_coefficients.strip())
-            effect_params = ["fir"] + coeffs
-        else:
-            effect_params = ["fir"]
+
+        effect_params = ["fir"] + [fir_file_map[fir_coefficients]]
+
         debug_str = shlex.join(effect_params)
-        if enable_fir and fir_coefficients.strip():
+        if enable_fir and len(effect_params) > 1:
             debug_str = "** Enabled **\n" + debug_str
             current_params.extend(effect_params)
+
         return (audio, {"sox_params": current_params}, debug_str)
 
 
@@ -570,7 +590,7 @@ class SoxGainNode:
                 "limiter": ("BOOLEAN", {"default": False}),
                 "headroom": ("BOOLEAN", {"default": False}),
                 "reclaim_headroom": ("BOOLEAN", {"default": False}),
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -618,7 +638,7 @@ class SoxHilbertNode:
                 "hilbert_halflen": ("INT", {"default": 16, "min": 4, "max": 256, "step": 4}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -645,7 +665,7 @@ class SoxLadspaNode:
                 "ladspa_params": ("STRING", {"multiline": True, "default": ""}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -674,7 +694,7 @@ class SoxLoudnessNode:
                 "loudness_volume": ("FLOAT", {"default": 12.0, "min": 0.0, "max": 20.0, "step": 0.1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -701,7 +721,7 @@ class SoxMcompandNode:
                 "mcompand_params": ("STRING", {"multiline": True, "default": ""}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -729,7 +749,7 @@ class SoxNoiseprofNode:
                 "noiseprof_noise_file": ("STRING", {"default": "", "tooltip": "Optional noise profile file"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -761,7 +781,7 @@ class SoxNoiseredNode:
                 "noisered_precision": ("INT", {"default": 4, "min": 0, "max": 6, "step": 1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -794,7 +814,7 @@ class SoxNormNode:
                 "norm_precision": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -824,7 +844,7 @@ class SoxOopsNode:
                 "oops_threshold": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -852,7 +872,7 @@ class SoxPadNode:
                 "pad_outro": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 60.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -879,7 +899,7 @@ class SoxRateNode:
                 "rate_quality": (["q", "h", "v"], {"default": "q"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -907,7 +927,7 @@ class SoxRemixNode:
                 "remix_gains": ("STRING", {"multiline": True, "default": "1.0"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -938,7 +958,7 @@ class SoxRepeatNode:
                 "repeat_count": ("INT", {"default": 1, "min": 0, "max": 100, "step": 1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -964,7 +984,7 @@ class SoxReverseNode:
                 "enable_reverse": ("BOOLEAN", {"default": True, "tooltip": "reverse"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -991,7 +1011,7 @@ class SoxRiaaNode:
                 "riaa_pre": ("BOOLEAN", {"default": False}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1021,7 +1041,7 @@ class SoxSilenceNode:
                 "silence_duration": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 60.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1048,7 +1068,7 @@ class SoxSincNode:
                 "sinc_frequency": ("FLOAT", {"default": 8000.0, "min": 0.0, "max": 96000.0, "step": 100.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1075,7 +1095,7 @@ class SoxSpeedNode:
                 "speed_factor": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1103,7 +1123,7 @@ class SoxSpliceNode:
                 "splice_duration": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 60.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1130,7 +1150,7 @@ class SoxStatNode:
                 "stat_tags": ("STRING", {"multiline": True, "default": ""}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1158,7 +1178,7 @@ class SoxStatsNode:
                 "stats_tag": ("STRING", {"default": ""}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1188,7 +1208,7 @@ class SoxStretchNode:
                 "stretch_fadelen": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1215,7 +1235,7 @@ class SoxSwapNode:
                 "swap_operation": ("INT", {"default": 1, "min": 1, "max": 4, "step": 1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1242,7 +1262,7 @@ class SoxSynthNode:
                 "synth_params": ("STRING", {"multiline": True, "default": ""}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1271,7 +1291,7 @@ class SoxTrimNode:
                 "trim_end": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 60.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1301,7 +1321,7 @@ class SoxUpsampleNode:
                 "upsample_factor": ("INT", {"default": 2, "min": 1, "max": 32, "step": 1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1330,7 +1350,7 @@ class SoxVadNode:
                                             "tooltip": "VAD threshold (0.0-1.0): Energy level above which audio is considered 'voice'; trims leading/trailing silence. Higher values trim more aggressively."}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1367,7 +1387,7 @@ class SoxVolNode:
                                        "tooltip": "Volume gain in dB: Positive boosts amplitude, negative attenuates. 0dB=unity. Use for per-track balance pre-mix/effects."}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1405,7 +1425,7 @@ class SoxBassNode:
                 "bass_width": ("FLOAT", {"default": 0.5, "min": 0.1, "max": 1.0, "step": 0.01, }),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1440,7 +1460,7 @@ class SoxBendNode:
                 "bend_end_time": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 30.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1498,7 +1518,7 @@ class SoxChorusNode:
                 "chorus_shape_4": (["sin", "tri"], {"default": "sin"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1567,7 +1587,7 @@ class SoxCompandNode:
                 "compand_delay": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1678,7 +1698,7 @@ class SoxEchoNode:
                 "echo_decay_4": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1731,7 +1751,7 @@ class SoxEchosNode:
                 "echos_decay_4": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1778,7 +1798,7 @@ class SoxEqualizerNode:
                 "equalizer_gain": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 20.0, "step": 0.1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1840,7 +1860,7 @@ interp   --    lin   delay-line interpolation: linear|quadratic"""}),
                 "flanger_interp": (["linear", "quadratic"], {"default": "linear"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1880,7 +1900,7 @@ class SoxHighpassNode:
                 "highpass_width": ("FLOAT", {"default": 0.707, "min": 0.1, "max": 10.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1912,7 +1932,7 @@ class SoxLowpassNode:
                 "lowpass_width": ("FLOAT", {"default": 0.707, "min": 0.1, "max": 10.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1942,7 +1962,7 @@ class SoxOverdriveNode:
                 "overdrive_colour": ("FLOAT", {"default": 20.0, "min": 0.0, "max": 100.0, "step": 1.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1975,7 +1995,7 @@ class SoxPhaserNode:
                 "phaser_mod": (["sinusoidal", "triangular"], {"default": "sinusoidal"}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -2013,7 +2033,7 @@ class SoxPitchNode:
                 "pitch_overlap": ("FLOAT", {"default": 12.0, "min": 0.0, "max": 50.0, "step": 1.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -2053,7 +2073,7 @@ class SoxReverbNode:
                 "reverb_wet_gain": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 20.0, "step": 0.1}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -2094,7 +2114,7 @@ class SoxTempoNode:
                 "tempo_overlap": ("FLOAT", {"default": 12.0, "min": 0.0, "max": 50.0, "step": 1.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -2130,7 +2150,7 @@ class SoxTrebleNode:
                 "treble_width": ("FLOAT", {"default": 0.5, "min": 0.1, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -2162,7 +2182,7 @@ class SoxTremoloNode:
                 "tremolo_depth": ("FLOAT", {"default": 40.0, "min": 0.0, "max": 100.0, "step": 1.0}),
             },
             "optional": {
-                "prev_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 

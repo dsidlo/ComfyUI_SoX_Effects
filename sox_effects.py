@@ -165,7 +165,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     plot_dbg += f"** Render failed: {str(e)}\n"
                 finally:
                     # Cleanup temps
-                    for path in (plot_script_path, png_path):
+                    for path in [input_path, output_path, plot_script_path, png_path]:
                         if path and os.path.exists(path):
                             try:
                                 os.remove(path)

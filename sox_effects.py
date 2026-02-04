@@ -182,7 +182,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
                     plot_dbg += f"\n--- SOX PLOT STDOUT START ---\n{result.stdout}\n--- PLOT STDOUT END ---\n"
                     plot_dbg += f"\n--- SOX PLOT STDERR START ---\n{result.stderr}\n--- PLOT STDERR END ---\n"
-                    if result.returncode != 0:
+                    if (enable_sox_plot is True and result.returncode != 2) or result.returncode != 0:
                         plot_dbg += f"** SoX Plot cmd executed: {shlex.join(cmd)}\n"
                         plot_dbg += f"** SoX Plot cmd failed (rc={result.returncode}); skipping render. **\n"
                         raise RuntimeError(f"SoX plot cmd failed: rc={result.returncode}")

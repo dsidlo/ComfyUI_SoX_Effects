@@ -585,7 +585,17 @@ class SoxGainNode:
             },
             "optional": {
                 "enable_gain": ("BOOLEAN", {"default": True, "tooltip": "Enable gain effect"}),
-                "gain_dB": ("FLOAT", {"default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1}),
+                "gain_dB": ("FLOAT", {
+    "default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1,
+    "tooltip": """Primary fixed gain adjustment in dB (appended only if != 0).
+
+Uniformly scales signal amplitude.
+• 0 dB: unity (no change)
+• Positive: boost volume
+• Negative: attenuate
+
+Use early for level staging; pairs with flags like -e/-b."""
+}),
                 "enable_equalize": ("BOOLEAN", {"default": False, "tooltip": "Enable -e equalize"}),
                 "enable_peak": ("BOOLEAN", {"default": False, "tooltip": "Enable -b peak"}),
                 "normalize": ("BOOLEAN", {

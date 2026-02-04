@@ -4,6 +4,7 @@
 #
 import subprocess
 import os
+import shlex
 import shutil
 
 class SoxNodeUtils:

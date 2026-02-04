@@ -160,24 +160,68 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         else:
             plot_dbg = "** Plot disabled: enable_sox_plot=False (audio processing unaffected). **\n"
 
-        # Audio processing (independent of plot)
+        # Audio processing (skipped if plotting, per tooltip)
         output_waveforms = []
         audio_dbg = ""
         processed_audio = audio  # Default passthrough
 
-        if enable_apply and sox_cmd_params:
+        if enable_sox_plot:
+            # Use audio cmd for plot (with real input for context; --plot exits early, stdout=script)
+            if sox_cmd_params:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+                    torchaudio.save(temp_input.name, waveform[0], sample_rate)  # Use first batch for plot context
+                    input_path = temp_input.name
+
+                output_path = tempfile.mktemp(suffix='.wav')  # Dummy output
+                cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
+                audio_dbg += f"Plot cmd: {shlex.join(cmd)} (audio passthrough; --plot exits early)\n"
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                    plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
+
+                    # Write stdout to temp script & render (reuse existing logic)
+                    plot_script_path = tempfile.mktemp(suffix='.soxplot')
+                    with open(plot_script_path, 'w') as f:
+                        f.write(result.stdout)
+                    png_path = tempfile.mktemp(suffix='.png')
+                    SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
+                    plot_dbg += f"PNG rendered: {png_path} ({plot_size_x}x{plot_size_y})\n"
+
+                    pil_img = Image.open(png_path).convert("RGB")
+                    img_array = np.array(pil_img)
+                    sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)
+                    plot_dbg += "sox_plot IMAGE ready.\n"
+
+                    # Save logic (existing)
+                    if save_sox_plot:
+                        base_prefix = plot_file_prefix.strip()
+                        if base_prefix:
+                            dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}_0001.png")) or '.'
+                            os.makedirs(dir_path, exist_ok=True)
+                            pattern = rf"^{re.escape(base_prefix)}_(\d{{4}})\.png$"
+                            nums = [int(m.group(1)) for f in os.listdir(dir_path) if (m := re.match(pattern, f))]
+                            next_seq = max(nums, default=0) + 1
+                            save_path = f"{base_prefix}_{next_seq:04d}.png"
+                            full_save_path = os.path.join(dir_path, save_path)
+                            shutil.copy2(png_path, full_save_path)
+                            plot_dbg += f"Saved: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
+
+                    # Cleanup plot temps
+                    for p in [input_path, output_path, plot_script_path, png_path]:
+                        if os.path.exists(p): os.remove(p)
+                except Exception as e:
+                    plot_dbg += f"** Plot from audio cmd failed: {str(e)}\n"
+            audio_dbg += "** Audio passthrough: enable_sox_plot=True disables processing. **\n"
+        elif enable_apply and sox_cmd_params:
+            # Normal audio processing
             for i in range(waveform.shape[0]):
                 single_waveform = waveform[i]
-
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
                     torchaudio.save(temp_input.name, single_waveform, sample_rate)
                     input_path = temp_input.name
-
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
                     output_path = temp_output.name
-
                 output_waveforms.append(single_waveform)
-
                 cmd = ['sox', input_path, output_path] + sox_cmd_params
                 audio_dbg += f"Audio cmd: {shlex.join(cmd)}\n"
                 try:
@@ -187,25 +231,15 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 except subprocess.CalledProcessError as e:
                     audio_dbg += f"** Audio failed (rc={e.returncode}): {e.stderr}\n"
                     raise RuntimeError(f"SoX failed: {e.stderr}")
-
-                if os.path.exists(input_path):
-                    os.remove(input_path)
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-
+                for p in [input_path, output_path]:
+                    if os.path.exists(p): os.remove(p)
             max_samples = max(w.shape[-1] for w in output_waveforms)
-            padded_waveforms = []
-            for w in output_waveforms:
-                padding = max_samples - w.shape[-1]
-                if padding > 0:
-                    w = torch.nn.functional.pad(w, (0, padding))
-                padded_waveforms.append(w)
-
+            padded_waveforms = [torch.nn.functional.pad(w, (0, max_samples - w.shape[-1])) if (padding := max_samples - w.shape[-1]) > 0 else w for w in output_waveforms]
             stacked = torch.stack(padded_waveforms)
             processed_audio = {"waveform": stacked, "sample_rate": sample_rate}
             audio_dbg = "** Audio processing enabled & succeeded. **\n" + audio_dbg
         else:
-            audio_dbg = "** Audio passthrough: enable_apply=False or empty params. **\n"
+            audio_dbg += "** Audio passthrough: enable_apply=False or empty params. **\n"
 
         # Combine debug
         full_dbg = f"{cmd_str}\n\n{plot_dbg}\n\n{audio_dbg}".strip()

@@ -80,7 +80,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
     RETURN_NAMES = ("audio", "sox_plot", "dbg-text")
     FUNCTION = "apply_effects"
     CATEGORY = "audio/SoX/Effects/Apply"
-    DESCRIPTION = "Applies the chained SoX effects parameters to the input audio. If enable_sox_plot=True, generates diagnostic plot PNG (no audio processing; passes through). dbg-text `string`: full sox command always (pre-execute, survives errors/disable). Wire to PreviewTextNode."
+    DESCRIPTION = """Applies the chained SoX effects parameters to the input audio. 
+  - If enable_sox_plot=True, generates diagnostic plot PNG (no audio processing; passes through). 
+    - *** If enable_sox_plot=True, no audio processing is performed. ***"""
 
     def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False, plot_size_x=800, plot_size_y=400, save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
         waveform = audio["waveform"]

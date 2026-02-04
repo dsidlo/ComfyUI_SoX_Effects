@@ -101,8 +101,13 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if not sox_cmd_params:
                 plot_dbg = "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
-                # Run SoX --plot gnuplot [effects] to generate script (no I/O files)
-                plot_cmd = ['sox', '--plot', 'gnuplot'] + sox_cmd_params
+                # Run SoX --plot gnuplot input.wav output.wav [effects] to generate script (with temp files)
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+                    torchaudio.save(temp_input.name, waveform[0], sample_rate)  # Use first batch item
+                    input_path = temp_input.name
+
+                output_path = tempfile.mktemp(suffix='.wav')  # Dummy output
+                plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
                 plot_script_path = tempfile.mktemp(suffix='.soxplot')
                 try:
                     result = subprocess.run(plot_cmd, capture_output=True, stderr=subprocess.PIPE, text=True, check=True)

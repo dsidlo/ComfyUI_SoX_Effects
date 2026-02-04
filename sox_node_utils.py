@@ -15,7 +15,7 @@ class SoxNodeUtils:
 
     @staticmethod
     def render_sox_plot_to_image(
-            sox_plot_script_path,
+            sox_plot_script_path=None,
             output_image='transfer_function.png',
             x=800,
             y=400
@@ -41,38 +41,27 @@ class SoxNodeUtils:
 
         # Commands to force PNG output and avoid interactive window
         commands = [
-            f"set terminal pngcairo size {x},{y} enhanced font 'Arial,10'",
-            f"set output '{output_image}'",
-            f"load '{sox_plot_script_path}'",
-            "unset output",
-            "exit"  # Ensures gnuplot terminates cleanly
+            f"set terminal pngcairo size {x},{y} enhanced font 'Arial,10'; ",
+            f"set output '{output_image}'; ",
+            f"load '{sox_plot_script_path}'; ",
+            "unset output; ",
+            "exit; "  # Ensures gnuplot terminates cleanly
         ]
 
-        gnuplot_input = '\n'.join(commands) + '\n'
-
-        gnuplot_cmd = ['gnuplot', '-e', gnuplot_input]
+        commands = ' '.join(commands)
+        gnuplot_cmd = ['gnuplot', '-e', commands]
         cmd_str = shlex.join(gnuplot_cmd)
 
         result = subprocess.run(
             gnuplot_cmd,  # -e executes commands directly
             capture_output=True,
-            text=True
+            text=True,
+            check=False
         )
 
         if result.returncode != 0:
-            msg = f"""*** The "gnuplot" command failed.
-command executed: {cmd_str}
-gnuplot commands input:
-{gnuplot_input}"""
-            print("Error running gnuplot:")
-            print(result.stderr)
+            msg = f'*** The "gnuplot" command failed.\ncommand executed: {cmd_str}'
             return (msg, result.stdout, result.stderr)
-
-        print(f"PNG successfully generated: {os.path.abspath(output_image)}")
-        if result.stdout.strip():
-            print("gnuplot stdout:", result.stdout)
-        if result.stderr.strip():
-            print("gnuplot warnings/errors:", result.stderr)
 
         return (None, result.stdout, result.stderr)
 

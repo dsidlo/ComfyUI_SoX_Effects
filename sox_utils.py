@@ -192,14 +192,12 @@ class SoxUtilSpectrogramNode:
                 spec_input = proc_p if current_params else input_p
                 cmds_dbg.append(shlex.join(["sox", spec_input, "-n", "spectrogram"] + options + ["-o", png_p]))
         dbg_text = f"parameters: {debug_str}\n" + '' if cmds_dbg else f"parameters: {debug_str}\n ** No audio for spectrogram. **\n"
+
+        # Prepare image_out
         all_images = []
         saved_msgs = []
         errors = []
-
-        # Prepare image_out
-        if not enable_spectrogram or len(audios_for_spec) == 0:
-            image_out = torch.zeros((1, 257, 800, 3), dtype=torch.uint8)
-        else:
+        if enable_spectrogram or len(audios_for_spec) == 0:
             # Spectrogram generation
             # 1. Apply prev_params to get processed_waveform
             # Multi-input spectrogram gen

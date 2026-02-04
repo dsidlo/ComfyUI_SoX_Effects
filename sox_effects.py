@@ -46,13 +46,13 @@ Default: 800px (good detail/speed balance).
 Larger sizes increase render time/memory."""
                 }),
                 "plot_size_y": ("INT", {
-                    "default": 240,
+                    "default": 400,
                     "min": 100,
                     "max": 800,
                     "step": 10,
                     "tooltip": """Plot PNG height in pixels (Y-axis, frequency).
 
-Default: 240px (compact magnitude response).
+Default: 400px (detailed magnitude response).
 • Shorter (100-200): Minimal space.
 • Taller (400-800): Room for phase plots, legends.
 
@@ -82,7 +82,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
     CATEGORY = "audio/SoX/Effects/Apply"
     DESCRIPTION = "Applies the chained SoX effects parameters to the input audio. If enable_sox_plot=True, generates diagnostic plot PNG (no audio processing; passes through). dbg-text `string`: full sox command always (pre-execute, survives errors/disable). Wire to PreviewTextNode."
 
-    def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False, plot_size_x=800, plot_size_y=240, save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
+    def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False, plot_size_x=800, plot_size_y=400, save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
 
@@ -91,7 +91,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
 
         # Handle plotting if enabled (no audio processing; diagnostic only)
-        sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)  # Blank default
+        sox_plot_image = torch.zeros((1, 400, 800, 3), dtype=torch.uint8)  # Blank default
         plot_dbg = ""
         plot_script_path = None
         png_path = None

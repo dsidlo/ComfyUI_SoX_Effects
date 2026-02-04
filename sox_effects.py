@@ -107,18 +107,22 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 try:
                     with open(plot_script_path, 'w') as f:
                         result = subprocess.run(plot_cmd, stdout=f, stderr=subprocess.PIPE, text=True, check=True)
-                    plot_dbg += f"Plot script generated: {plot_script_path}\n"
-
                     # Render to PNG
                     png_path = tempfile.mktemp(suffix='.png')
-                    SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
-                    plot_dbg += f"PNG rendered: {png_path} ({plot_size_x}x{plot_size_y})\n"
-
-                    # Load PNG as IMAGE tensor
-                    pil_img = Image.open(png_path).convert("RGB")
-                    img_array = np.array(pil_img)
-                    sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
-                    plot_dbg += "sox_plot IMAGE ready (800x240 PNG).\n"
+                    render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
+                    plot_dbg += f"PNG render msg: {render_msg or 'Success'}\n"
+                    if render_msg is None:
+                        if gnuplot_stdout.strip():
+                            plot_dbg += f"\n--- GNUPLOT STDOUT ---\n{gnuplot_stdout}\n--- END ---\n"
+                        if gnuplot_stderr.strip():
+                            plot_dbg += f"\n--- GNUPLOT STDERR ---\n{gnuplot_stderr}\n--- END ---\n"
+                        # Load PNG as IMAGE tensor
+                        pil_img = Image.open(png_path).convert("RGB")
+                        img_array = np.array(pil_img)
+                        sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
+                        plot_dbg += f"sox_plot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
+                    else:
+                        plot_dbg += f"** Render failed: {render_msg} **\n"
 
                     # Save if requested (incremental, like spectrogram)
                     if save_sox_plot:
@@ -189,13 +193,19 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     with open(plot_script_path, 'w') as f:
                         f.write(result.stdout)
                     png_path = tempfile.mktemp(suffix='.png')
-                    SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
-                    plot_dbg += f"PNG rendered: {png_path} ({plot_size_x}x{plot_size_y})\n"
-
-                    pil_img = Image.open(png_path).convert("RGB")
-                    img_array = np.array(pil_img)
-                    sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)
-                    plot_dbg += "sox_plot IMAGE ready.\n"
+                    render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
+                    plot_dbg += f"PNG render msg: {render_msg or 'Success'}\n"
+                    if render_msg is None:
+                        if gnuplot_stdout.strip():
+                            plot_dbg += f"\n--- GNUPLOT STDOUT ---\n{gnuplot_stdout}\n--- END ---\n"
+                        if gnuplot_stderr.strip():
+                            plot_dbg += f"\n--- GNUPLOT STDERR ---\n{gnuplot_stderr}\n--- END ---\n"
+                        pil_img = Image.open(png_path).convert("RGB")
+                        img_array = np.array(pil_img)
+                        sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)
+                        plot_dbg += f"sox_plot IMAGE ready ({plot_size_x}x{plot_size_y}).\n"
+                    else:
+                        plot_dbg += f"** Render failed: {render_msg} **\n"
 
                     # Save logic (existing)
                     if save_sox_plot:

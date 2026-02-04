@@ -225,7 +225,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                             plot_dbg += f"Saved: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
 
                     # Cleanup plot temps
-                    for p in [input_path, plot_script_path, png_path]:
+                    for p in [plot_script_path, png_path]:
                         if os.path.exists(p): os.remove(p)
                 except Exception as e:
                     plot_dbg += f"** Plot from audio cmd failed: {str(e)}\n"

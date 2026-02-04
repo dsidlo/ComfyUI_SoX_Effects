@@ -60,7 +60,10 @@ class SoxNodeUtils:
         )
 
         if result.returncode != 0:
-            msg = f'*** The "gnuplot" command failed.\ncommand executed: {cmd_str}'
+            msg = f"""*** The "gnuplot" command failed.
+command executed: {cmd_str}
+gnuplot commands input:
+{gnuplot_input}"""
             print("Error running gnuplot:")
             print(result.stderr)
             return (msg, result.stdout, result.stderr)

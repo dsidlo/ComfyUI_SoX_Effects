@@ -24,9 +24,9 @@ class SoxNodeUtils:
 
         Requires gnuplot installed on your system.
 
-        Returns (response_msg, stdout, stderr):
-        - response_msg: None on success, error message string otherwise
-        - stdout, stderr: from gnuplot subprocess
+        Returns (return_message, result_stdout, result_stderr):
+        - return_message: None on success, error message string otherwise
+        - result_stdout, result_stderr: from gnuplot subprocess
 
         # Example usage after you ran:
         # sox --plot gnuplot -n -n fir coeffs.txt > fir_plot.gp
@@ -36,7 +36,7 @@ class SoxNodeUtils:
             return (f"Script not found: {sox_plot_script_path}", "", "")
 
         if shutil.which('gnuplot') is None:
-            return ("Gnuplot command not found. Please install gnuplot and ensure it's in your PATH.", "", "")
+            return ("The \"gnuplot\" command was not found. It is required. Please ensure that it is installed.", "", "")
 
         # Commands to force PNG output and avoid interactive window
         commands = [
@@ -49,16 +49,17 @@ class SoxNodeUtils:
 
         gnuplot_input = '\n'.join(commands) + '\n'
 
+        gnuplot_cmd = ['gnuplot', '-e', gnuplot_input]
+        cmd_str = shlex.join(gnuplot_cmd)
+
         result = subprocess.run(
-            ['gnuplot', '-e', gnuplot_input],  # -e executes commands directly
+            gnuplot_cmd,  # -e executes commands directly
             capture_output=True,
             text=True
         )
 
         if result.returncode != 0:
-            msg = f"Gnuplot failed (rc={result.returncode})."
-            if result.stderr.strip():
-                msg += f" STDERR: {result.stderr.strip()}"
+            msg = f'*** The "gnuplot" command failed.\ncommand executed: {cmd_str}'
             print("Error running gnuplot:")
             print(result.stderr)
             return (msg, result.stdout, result.stderr)

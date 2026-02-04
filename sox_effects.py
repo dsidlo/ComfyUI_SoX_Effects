@@ -588,13 +588,71 @@ class SoxGainNode:
                 "gain_dB": ("FLOAT", {"default": 0.0, "min": -18.0, "max": 18.0, "step": 0.1}),
                 "enable_equalize": ("BOOLEAN", {"default": False, "tooltip": "Enable -e equalize"}),
                 "enable_peak": ("BOOLEAN", {"default": False, "tooltip": "Enable -b peak"}),
-                "normalize": ("BOOLEAN", {"default": False}),
-                "normalize_db": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 0.0, "step": 0.1}),
-                "limiter": ("BOOLEAN", {"default": False}),
-                "limiter_db": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 0.0, "step": 0.1}),
-                "headroom": ("BOOLEAN", {"default": False}),
-                "headroom_db": ("FLOAT", {"default": 0.0, "min": -20.0, "max": 0.0, "step": 0.1}),
-                "reclaim_headroom": ("BOOLEAN", {"default": False}),
+                "normalize": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": """Enable RMS normalization to 0 dB (-n).
+    
+    Normalizes the audio so the RMS level is 0 dB.
+    
+    Incompatible with limiter (-l): using both may cause clipping or unexpected results.
+    Use normalize_db to set a custom target level (e.g., -12 dB)."""
+                }),
+                "normalize_db": ("FLOAT", {
+                    "default": 0.0,
+                    "min": -20.0,
+                    "max": 0.0,
+                    "step": 0.1,
+                    "tooltip": """Custom dB target for normalization (appended to -n if != 0).
+    
+    Negative values (e.g., -12) set the RMS target below 0 dB for headroom.
+    Only applies if normalize is enabled."""
+                }),
+                "limiter": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": """Enable peak limiting to 0 dB (-l).
+    
+    Applies a soft limiter to prevent peaks from exceeding 0 dB.
+    
+    Incompatible with normalize (-n): using both may cause clipping or unexpected results.
+    Use limiter_db to set a custom threshold (e.g., -6 dB)."""
+                }),
+                "limiter_db": ("FLOAT", {
+                    "default": 0.0,
+                    "min": -20.0,
+                    "max": 0.0,
+                    "step": 0.1,
+                    "tooltip": """Custom dB threshold for limiter (appended to -l if != 0).
+    
+    Negative values (e.g., -6) set the peak limit below 0 dB.
+    Only applies if limiter is enabled."""
+                }),
+                "headroom": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": """Enable headroom management (-h).
+    
+    Automatically calculates and applies gain to use available headroom without clipping.
+    
+    May interact with reclaim_headroom (-r): use -h before -r for best results.
+    Use headroom_db for custom adjustments if needed."""
+                }),
+                "headroom_db": ("FLOAT", {
+                    "default": 0.0,
+                    "min": -20.0,
+                    "max": 0.0,
+                    "step": 0.1,
+                    "tooltip": """Custom dB adjustment for headroom (appended to -h if != 0).
+    
+    Fine-tunes the headroom calculation (negative for more conservative gain).
+    Only applies if headroom is enabled."""
+                }),
+                "reclaim_headroom": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": """Enable headroom reclamation (-r).
+    
+    Boosts the signal after limiting or other processes to reclaim lost headroom.
+    
+    Best used after limiter (-l) or headroom (-h). May cause clipping if overused."""
+                }),
                 "sox_params": ("SOX_PARAMS",),
             }
         }

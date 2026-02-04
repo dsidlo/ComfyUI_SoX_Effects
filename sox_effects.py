@@ -101,8 +101,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if not sox_cmd_params:
                 plot_dbg = "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
-                # Run SoX --plot gnuplot -n -n [effects] to generate script (null I/O)
-                plot_cmd = ['sox', '--plot', 'gnuplot', '-n', '-n'] + sox_cmd_params
+                # Run SoX --plot gnuplot [effects] to generate script (no I/O files)
+                plot_cmd = ['sox', '--plot', 'gnuplot'] + sox_cmd_params
                 plot_script_path = tempfile.mktemp(suffix='.soxplot')
                 try:
                     result = subprocess.run(plot_cmd, capture_output=True, stderr=subprocess.PIPE, text=True, check=True)
@@ -175,13 +175,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         processed_audio = audio  # Default passthrough
 
         if enable_sox_plot:
-            # Use audio cmd for plot (with real input for context; --plot exits early, stdout=script)
             if sox_cmd_params:
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                    torchaudio.save(temp_input.name, waveform[0], sample_rate)  # Use first batch for plot context
-                    input_path = temp_input.name
-
-                cmd = ['sox', '--plot', 'gnuplot', '-n', '-n'] + sox_cmd_params
+                cmd = ['sox', '--plot', 'gnuplot'] + sox_cmd_params
                 audio_dbg += f"\nPlot cmd: {shlex.join(cmd)} (audio passthrough; --plot exits early)\n"
                 try:
                     result = subprocess.run(cmd, capture_output=True, text=True, check=False)

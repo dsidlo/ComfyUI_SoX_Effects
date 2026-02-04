@@ -105,8 +105,13 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 plot_cmd = ['sox', '--plot', 'gnuplot', '-n', '-n'] + sox_cmd_params
                 plot_script_path = tempfile.mktemp(suffix='.soxplot')
                 try:
+                    result = subprocess.run(plot_cmd, capture_output=True, stderr=subprocess.PIPE, text=True, check=True)
+                    # Filter out 'pause ' lines before saving
+                    lines = [line for line in result.stdout.splitlines() if not line.strip().startswith('pause ')]
+                    filtered_content = '\n'.join(lines) + '\n'
                     with open(plot_script_path, 'w') as f:
-                        result = subprocess.run(plot_cmd, stdout=f, stderr=subprocess.PIPE, text=True, check=True)
+                        f.write(filtered_content)
+                    plot_dbg += f"Plot script generated: {plot_script_path} (filtered {len(result.stdout.splitlines()) - len(lines)} 'pause' lines)\n"
                     # Render to PNG
                     png_path = tempfile.mktemp(suffix='.png')
                     render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
@@ -188,10 +193,13 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         raise RuntimeError(f"SoX plot cmd failed: rc={result.returncode}")
                     plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
 
-                    # Write stdout to temp script & render (reuse existing logic)
+                    # Filter out 'pause ' lines before saving
+                    lines = [line for line in result.stdout.splitlines() if not line.strip().startswith('pause ')]
+                    filtered_content = '\n'.join(lines) + '\n'
                     plot_script_path = tempfile.mktemp(suffix='.soxplot')
                     with open(plot_script_path, 'w') as f:
-                        f.write(result.stdout)
+                        f.write(filtered_content)
+                    plot_dbg += f"Filtered {len(result.stdout.splitlines()) - len(lines)} 'pause' lines.\n"
                     png_path = tempfile.mktemp(suffix='.png')
                     render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
                     plot_dbg += f"PNG render msg: {render_msg or 'Success'}\n"

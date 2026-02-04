@@ -576,6 +576,7 @@ class SoxFirNode:
 
 
 class SoxGainNode:
+    # Tested: DGS v0.1.3
     @classmethod
     def INPUT_TYPES(cls):
         return {

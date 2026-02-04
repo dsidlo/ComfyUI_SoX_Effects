@@ -19,17 +19,43 @@ class SoxApplyEffectsNode:
             "required": {
                 "audio": ("AUDIO",),
                 "enable_apply": ("BOOLEAN", {"default": True, "tooltip": "Enable application of SoX effects"}),
+                "enable_sox_plot": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": """Enable SoX --plot mode for diagnostic visualization of transfer functions (gnuplot script → PNG image).
+
+**Important Notes**:
+- Disables audio processing entirely: SoX exits early after generating plot script (no effects applied to audio; passes through unchanged).
+- Only the **first plottable effect** in the SOX_PARAMS chain is visualized (ignores subsequent effects).
+- Supported effects (transfer-function based): equalizer, highpass, lowpass, bandpass, bandreject, allpass, sinc, fir, biquad, compand (compression curve), bass, treble.
+- If no supported effects in chain → blank/empty plot (minimal script output).
+- Useful combinations: Tune single filters (e.g., chain only 'highpass 1000' → plot response curve); preview FIR coeffs.
+- Issues to avoid: Multi-effect chains (only first plotted); non-linear effects (reverb/echo ignored, blank plot); production audio workflows (breaks processing—use separately for tuning)."""
+                }),
+                "save_sox_plot": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": """Save the generated sox_plot PNG to disk (incremental numbering to avoid overwrites).
+
+Only active if enable_sox_plot is True. Files saved as `{plot_file_prefix}_{nnnn}.png` (e.g., sox_plot_images/sox_plot_0001.png).
+Creates directory if needed; logs full path in dbg-text on success."""
+                }),
+                "plot_file_prefix": ("STRING", {
+                    "default": "sox_plot_images/sox_plot",
+                    "tooltip": """File prefix for saved PNG plots (e.g., 'my_plots/filter').
+
+Defaults to 'sox_plot_images/sox_plot'. Saves incrementally: `{prefix}_{nnnn}.png` (nnnn=0001+).
+Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plots by workflow (e.g., 'fir_tests/coeff1')."""
+                }),
                 "params": ("SOX_PARAMS",),
             },
         }
 
-    RETURN_TYPES = ("AUDIO", "STRING")
-    RETURN_NAMES = ("audio", "dbg-text")
+    RETURN_TYPES = ("AUDIO", "IMAGE", "STRING")
+    RETURN_NAMES = ("audio", "sox_plot", "dbg-text")
     FUNCTION = "apply_effects"
     CATEGORY = "audio/SoX/Effects/Apply"
-    DESCRIPTION = "Applies the chained SoX effects parameters to the input audio. dbg-text `string`: full sox command always (pre-execute, survives errors/disable). Wire to PreviewTextNode."
+    DESCRIPTION = "Applies the chained SoX effects parameters to the input audio. If enable_sox_plot=True, generates diagnostic plot PNG (no audio processing; passes through). dbg-text `string`: full sox command always (pre-execute, survives errors/disable). Wire to PreviewTextNode."
 
-    def apply_effects(self, audio, params, enable_apply=True):
+    def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False, save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
 
@@ -37,45 +63,126 @@ class SoxApplyEffectsNode:
         cmd_str = "sox input.wav output.wav " + shlex.join(
             sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
 
+        # Handle plotting if enabled (no audio processing; diagnostic only)
+        sox_plot_image = None
+        plot_dbg = ""
+        if enable_sox_plot:
+            if not sox_cmd_params:
+                plot_dbg = "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
+                sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)  # Blank placeholder
+            else:
+                # Run SoX --plot gnuplot -n -n [effects] to generate script (null I/O)
+                plot_cmd = ['sox', '--plot', 'gnuplot', '-n', '-n'] + sox_cmd_params
+                with tempfile.NamedTemporaryFile(suffix='.soxplot', delete=False) as temp_plot_script:
+                    plot_script_path = temp_plot_script.name
+                try:
+                    result = subprocess.run(plot_cmd, stdout=open(plot_script_path, 'w'), stderr=subprocess.PIPE, text=True, check=True)
+                    plot_dbg += f"Plot script generated: {plot_script_path}\n"
+
+                    # Render to PNG
+                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_png:
+                        png_path = temp_png.name
+                    from .sox_node_utils import SoxNodeUtils
+                    SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=800, y=240)
+                    plot_dbg += f"PNG rendered: {png_path}\n"
+
+                    # Load PNG as IMAGE tensor
+                    pil_img = Image.open(png_path).convert("RGB")
+                    img_array = np.array(pil_img)
+                    sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
+                    plot_dbg += "sox_plot IMAGE ready (800x240 PNG).\n"
+
+                    # Save if requested (incremental, like spectrogram)
+                    if save_sox_plot:
+                        base_prefix = plot_file_prefix.strip()
+                        if not base_prefix:
+                            plot_dbg += "Save skipped: Empty plot_file_prefix.\n"
+                        else:
+                            dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}_0001.png")) or '.'
+                            os.makedirs(dir_path, exist_ok=True)
+                            pattern = rf"^{re.escape(base_prefix)}_(\d{{4}})\.png$"
+                            nums = []
+                            try:
+                                for f in os.listdir(dir_path):
+                                    m = re.match(pattern, f)
+                                    if m:
+                                        nums.append(int(m.group(1)))
+                            except OSError:
+                                pass
+                            next_seq = max(nums, default=0) + 1
+                            save_path = f"{base_prefix}_{next_seq:04d}.png"
+                            full_save_path = os.path.abspath(save_path)
+                            shutil.copy2(png_path, full_save_path)
+                            plot_dbg += f"Saved plot: {full_save_path} (seq {next_seq:04d})\n"
+                    else:
+                        plot_dbg += "Save skipped: save_sox_plot=False.\n"
+
+                except subprocess.CalledProcessError as e:
+                    plot_dbg += f"** Plot failed (rc={e.returncode}): {e.stderr}\n"
+                    sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)
+                except Exception as e:
+                    plot_dbg += f"** Render failed: {str(e)}\n"
+                    sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)
+                finally:
+                    # Cleanup temps
+                    for path in [plot_script_path, png_path]:
+                        if os.path.exists(path):
+                            os.remove(path)
+        else:
+            sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)  # Blank if disabled
+            plot_dbg = "** Plot disabled: enable_sox_plot=False (audio processing unaffected). **\n"
+
+        # Audio processing (independent of plot)
         output_waveforms = []
+        audio_dbg = ""
+        processed_audio = audio  # Default passthrough
 
-        for i in range(waveform.shape[0]):
-            single_waveform = waveform[i]
+        if enable_apply and sox_cmd_params:
+            for i in range(waveform.shape[0]):
+                single_waveform = waveform[i]
 
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                torchaudio.save(temp_input.name, single_waveform, sample_rate)
-                input_path = temp_input.name
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+                    torchaudio.save(temp_input.name, single_waveform, sample_rate)
+                    input_path = temp_input.name
 
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
-                output_path = temp_output.name
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
+                    output_path = temp_output.name
 
-            output_waveforms.append(single_waveform)
+                output_waveforms.append(single_waveform)
 
-            if enable_apply and sox_cmd_params:
                 cmd = ['sox', input_path, output_path] + sox_cmd_params
+                audio_dbg += f"Audio cmd: {shlex.join(cmd)}\n"
                 try:
                     subprocess.run(cmd, check=True, capture_output=True, text=True)
                     out_waveform, _ = torchaudio.load(output_path)
                     output_waveforms[-1] = out_waveform
                 except subprocess.CalledProcessError as e:
+                    audio_dbg += f"** Audio failed (rc={e.returncode}): {e.stderr}\n"
                     raise RuntimeError(f"SoX failed: {e.stderr}")
 
-            if os.path.exists(input_path):
-                os.remove(input_path)
-            if os.path.exists(output_path):
-                os.remove(output_path)
+                if os.path.exists(input_path):
+                    os.remove(input_path)
+                if os.path.exists(output_path):
+                    os.remove(output_path)
 
-        max_samples = max(w.shape[-1] for w in output_waveforms)
-        padded_waveforms = []
-        for w in output_waveforms:
-            padding = max_samples - w.shape[-1]
-            if padding > 0:
-                w = torch.nn.functional.pad(w, (0, padding))
-            padded_waveforms.append(w)
+            max_samples = max(w.shape[-1] for w in output_waveforms)
+            padded_waveforms = []
+            for w in output_waveforms:
+                padding = max_samples - w.shape[-1]
+                if padding > 0:
+                    w = torch.nn.functional.pad(w, (0, padding))
+                padded_waveforms.append(w)
 
-        stacked = torch.stack(padded_waveforms)
+            stacked = torch.stack(padded_waveforms)
+            processed_audio = {"waveform": stacked, "sample_rate": sample_rate}
+            audio_dbg = "** Audio processing enabled & succeeded. **\n" + audio_dbg
+        else:
+            audio_dbg = "** Audio passthrough: enable_apply=False or empty params. **\n"
 
-        return ({"waveform": stacked, "sample_rate": sample_rate}, cmd_str)
+        # Combine debug
+        full_dbg = f"{cmd_str}\n\n{plot_dbg}\n\n{audio_dbg}".strip()
+
+        return (processed_audio, sox_plot_image, full_dbg)
 
 
 class SoxAllpassNode:

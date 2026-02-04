@@ -174,9 +174,14 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
                 output_path = tempfile.mktemp(suffix='.wav')  # Dummy output
                 cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
-                audio_dbg += f"Plot cmd: {shlex.join(cmd)} (audio passthrough; --plot exits early)\n"
+                audio_dbg += f"\nPlot cmd: {shlex.join(cmd)} (audio passthrough; --plot exits early)\n"
                 try:
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                    plot_dbg += f"\n--- PLOT STDOUT START ---\n{result.stdout}\n--- PLOT STDOUT END ---\n"
+                    plot_dbg += f"\n--- PLOT STDERR START ---\n{result.stderr}\n--- PLOT STDERR END ---\n"
+                    if result.returncode != 0:
+                        plot_dbg += f"** Plot cmd failed (rc={result.returncode}); skipping render. **\n"
+                        raise RuntimeError(f"SoX plot cmd failed: rc={result.returncode}")
                     plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
 
                     # Write stdout to temp script & render (reuse existing logic)
@@ -211,7 +216,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         if os.path.exists(p): os.remove(p)
                 except Exception as e:
                     plot_dbg += f"** Plot from audio cmd failed: {str(e)}\n"
-            audio_dbg += "** Audio passthrough: enable_sox_plot=True disables processing. **\n"
+            audio_dbg += "\n** Audio passthrough: enable_sox_plot=True disables processing. **\n"
         elif enable_apply and sox_cmd_params:
             # Normal audio processing
             for i in range(waveform.shape[0]):

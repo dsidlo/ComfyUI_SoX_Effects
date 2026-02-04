@@ -142,7 +142,13 @@ class SoxAllpassNode:
     RETURN_NAMES = ("audio", "SOX_PARAMS", "dbg-text")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Effects/Equalization"
-    DESCRIPTION = "Allpass SoX effect node for chaining. dbg-text STRING: 'allpass params' always (pre-extend; '** Enabled **' prefix if on)."
+    DESCRIPTION = """Allpass SoX effect node for chaining sox effects.
+   allpass frequency[k] width[h|k|o|q]
+          Apply  a  two-pole  all-pass filter with central frequency (in Hz) frequency, 
+          and filter-width width.  An all-pass filter changes the audio's frequency to phase 
+          relationship without changing its frequency to amplitude
+          relationship..
+    """
 
     def process(self, audio, enable_allpass=True, allpass_frequency=1000.0, allpass_width=1.0, sox_params=None):
         current_params = sox_params["sox_params"] if sox_params is not None else []

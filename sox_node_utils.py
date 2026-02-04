@@ -16,7 +16,7 @@ class SoxNodeUtils:
             sox_plot_script_path,
             output_image='transfer_function.png',
             x=800,
-            y=240
+            y=400
     ):
         """
         Renders a SoX --plot gnuplot script to a PNG file.

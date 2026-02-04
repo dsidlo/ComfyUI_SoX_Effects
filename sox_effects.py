@@ -10,6 +10,7 @@ import re
 import shutil
 import struct
 from PIL import Image
+from .sox_node_utils import SoxNodeUtils
 
 class SoxApplyEffectsNode:
     # Tested: DGS v0.1.3
@@ -64,25 +65,24 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
 
         # Handle plotting if enabled (no audio processing; diagnostic only)
-        sox_plot_image = None
+        sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)  # Blank default
         plot_dbg = ""
+        plot_script_path = None
+        png_path = None
         if enable_sox_plot:
             if not sox_cmd_params:
                 plot_dbg = "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
-                sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)  # Blank placeholder
             else:
                 # Run SoX --plot gnuplot -n -n [effects] to generate script (null I/O)
                 plot_cmd = ['sox', '--plot', 'gnuplot', '-n', '-n'] + sox_cmd_params
-                with tempfile.NamedTemporaryFile(suffix='.soxplot', delete=False) as temp_plot_script:
-                    plot_script_path = temp_plot_script.name
+                plot_script_path = tempfile.mktemp(suffix='.soxplot')
                 try:
-                    result = subprocess.run(plot_cmd, stdout=open(plot_script_path, 'w'), stderr=subprocess.PIPE, text=True, check=True)
+                    with open(plot_script_path, 'w') as f:
+                        result = subprocess.run(plot_cmd, stdout=f, stderr=subprocess.PIPE, text=True, check=True)
                     plot_dbg += f"Plot script generated: {plot_script_path}\n"
 
                     # Render to PNG
-                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_png:
-                        png_path = temp_png.name
-                    from .sox_node_utils import SoxNodeUtils
+                    png_path = tempfile.mktemp(suffix='.png')
                     SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=800, y=240)
                     plot_dbg += f"PNG rendered: {png_path}\n"
 
@@ -111,25 +111,25 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                                 pass
                             next_seq = max(nums, default=0) + 1
                             save_path = f"{base_prefix}_{next_seq:04d}.png"
-                            full_save_path = os.path.abspath(save_path)
+                            full_save_path = os.path.join(dir_path, save_path)
                             shutil.copy2(png_path, full_save_path)
-                            plot_dbg += f"Saved plot: {full_save_path} (seq {next_seq:04d})\n"
+                            plot_dbg += f"Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
                     else:
                         plot_dbg += "Save skipped: save_sox_plot=False.\n"
 
                 except subprocess.CalledProcessError as e:
                     plot_dbg += f"** Plot failed (rc={e.returncode}): {e.stderr}\n"
-                    sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)
                 except Exception as e:
                     plot_dbg += f"** Render failed: {str(e)}\n"
-                    sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)
                 finally:
                     # Cleanup temps
-                    for path in [plot_script_path, png_path]:
-                        if os.path.exists(path):
-                            os.remove(path)
+                    for path in (plot_script_path, png_path):
+                        if path and os.path.exists(path):
+                            try:
+                                os.remove(path)
+                            except OSError:
+                                pass
         else:
-            sox_plot_image = torch.zeros((1, 240, 800, 3), dtype=torch.uint8)  # Blank if disabled
             plot_dbg = "** Plot disabled: enable_sox_plot=False (audio processing unaffected). **\n"
 
         # Audio processing (independent of plot)

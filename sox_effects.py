@@ -32,6 +32,32 @@ class SoxApplyEffectsNode:
 - Useful combinations: Tune single filters (e.g., chain only 'highpass 1000' → plot response curve); preview FIR coeffs.
 - Issues to avoid: Multi-effect chains (only first plotted); non-linear effects (reverb/echo ignored, blank plot); production audio workflows (breaks processing—use separately for tuning)."""
                 }),
+                "plot_size_x": ("INT", {
+                    "default": 800,
+                    "min": 100,
+                    "max": 2000,
+                    "step": 10,
+                    "tooltip": """Plot PNG width in pixels (X-axis).
+
+Default: 800px (good detail/speed balance).
+• Smaller (100-400): Quick thumbs, low-res previews.
+• Larger (1200-2000): High detail for printing/analysis.
+
+Larger sizes increase render time/memory."""
+                }),
+                "plot_size_y": ("INT", {
+                    "default": 240,
+                    "min": 100,
+                    "max": 800,
+                    "step": 10,
+                    "tooltip": """Plot PNG height in pixels (Y-axis, frequency).
+
+Default: 240px (compact magnitude response).
+• Shorter (100-200): Minimal space.
+• Taller (400-800): Room for phase plots, legends.
+
+Pairs with X for total canvas size; keep aspect ~3:1."""
+                }),
                 "save_sox_plot": ("BOOLEAN", {
                     "default": False,
                     "tooltip": """Save the generated sox_plot PNG to disk (incremental numbering to avoid overwrites).
@@ -56,7 +82,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
     CATEGORY = "audio/SoX/Effects/Apply"
     DESCRIPTION = "Applies the chained SoX effects parameters to the input audio. If enable_sox_plot=True, generates diagnostic plot PNG (no audio processing; passes through). dbg-text `string`: full sox command always (pre-execute, survives errors/disable). Wire to PreviewTextNode."
 
-    def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False, save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
+    def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False, plot_size_x=800, plot_size_y=240, save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
 
@@ -83,8 +109,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
                     # Render to PNG
                     png_path = tempfile.mktemp(suffix='.png')
-                    SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=800, y=240)
-                    plot_dbg += f"PNG rendered: {png_path}\n"
+                    SoxNodeUtils.render_sox_plot_to_image(plot_script_path, png_path, x=plot_size_x, y=plot_size_y)
+                    plot_dbg += f"PNG rendered: {png_path} ({plot_size_x}x{plot_size_y})\n"
 
                     # Load PNG as IMAGE tensor
                     pil_img = Image.open(png_path).convert("RGB")

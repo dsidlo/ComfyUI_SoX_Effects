@@ -83,13 +83,59 @@ class SoxAllpassNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio": ("AUDIO",),
-                "enable_allpass": ("BOOLEAN", {"default": True, "tooltip": "allpass frequency width[h|k|q|o]"}),
-                "allpass_frequency": ("FLOAT", {"default": 1000.0, "min": 0.0, "max": 20000.0, "step": 1.0}),
-                "allpass_width": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 10.0, "step": 0.1}),
+                "audio": ("AUDIO", {"tooltip": """Input audio waveform tensor.
+    
+    Passes through unchanged; used for chaining to other nodes.
+    
+    Supports mono/stereo/multi-channel; batched [B,C,T] format."""}),
+                "enable_allpass": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": """Enable the Allpass filter effect.
+    
+    Applies phase shift without altering amplitude (all-pass filter).
+    
+    Useful for: Creating comb filtering, subtle spatial effects, or pre-delay in reverb chains.
+    
+    Combine with: DelayNode for metallic/comb reverb; avoid high widths (>5) with low frequencies (<500Hz) to prevent instability or artifacts.
+    
+    SoX syntax: allpass <frequency> <width>[h|k|q|o] (q=quality recommended)."""
+                }),
+                "allpass_frequency": ("FLOAT", {
+                    "default": 1000.0,
+                    "min": 0.0,
+                    "max": 20000.0,
+                    "step": 1.0,
+                    "tooltip": """Center frequency (Hz) for the allpass filter.
+    
+    Determines where phase shift is most pronounced (0-20kHz audible range).
+    
+    • Low (<500Hz): Bass phase effects (e.g., warmth/thump).
+    • Mid (1-5kHz): Vocal/instrumental coloration.
+    • High (>5kHz): Airy shimmer (use narrow width to avoid harshness).
+    
+    Tip: Start at 1000Hz; pair with width=1q for subtle; test with/without DelayNode to avoid muddiness."""
+                }),
+                "allpass_width": ("FLOAT", {
+                    "default": 1.0,
+                    "min": 0.1,
+                    "max": 10.0,
+                    "step": 0.1,
+                    "tooltip": """Bandwidth/quality of the allpass filter (Q-factor).
+    
+    Controls sharpness of phase shift (0.1=wide/broad, 10=narrow/precise).
+    
+    • Low Q (0.1-1.0): Gentle, smooth phase (good for overall tone shaping).
+    • High Q (5-10): Sharp notch-like (risk of ringing; use sparingly).
+    
+    Units: Appends 'q' (quality); e.g., 1.0 → "1q". Avoid extremes (>8) at high frequencies to prevent digital artifacts or instability in chains."""
+                }),
             },
             "optional": {
-                "sox_params": ("SOX_PARAMS",),
+                "sox_params": ("SOX_PARAMS", {"tooltip": """Previous SoX effects chain (list of params).
+    
+    Appends allpass params if enabled; passes through for further chaining.
+    
+    Use: Wire from prior effect nodes (e.g., GainNode → AllpassNode → ApplyEffectsNode)."""}),
             }
         }
     RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")

@@ -181,8 +181,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     torchaudio.save(temp_input.name, waveform[0], sample_rate)  # Use first batch for plot context
                     input_path = temp_input.name
 
-                output_path = tempfile.mktemp(suffix='.wav')  # Dummy output
-                cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
+                cmd = ['sox', '--plot', 'gnuplot', '-n', '-n'] + sox_cmd_params
                 audio_dbg += f"\nPlot cmd: {shlex.join(cmd)} (audio passthrough; --plot exits early)\n"
                 try:
                     result = subprocess.run(cmd, capture_output=True, text=True, check=False)

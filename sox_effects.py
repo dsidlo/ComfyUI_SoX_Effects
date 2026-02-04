@@ -178,18 +178,12 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
                 output_waveforms.append(single_waveform)
 
-                cmd = ['sox']
-                if enable_sox_plot:
-                    cmd += ['--plot', 'gnuplot']
-                cmd += [input_path, output_path] + sox_cmd_params
+                cmd = ['sox', input_path, output_path] + sox_cmd_params
                 audio_dbg += f"Audio cmd: {shlex.join(cmd)}\n"
                 try:
-                    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-                    if enable_sox_plot:
-                        output_waveforms[-1] = single_waveform
-                    else:
-                        out_waveform, _ = torchaudio.load(output_path)
-                        output_waveforms[-1] = out_waveform
+                    subprocess.run(cmd, check=True, capture_output=True, text=True)
+                    out_waveform, _ = torchaudio.load(output_path)
+                    output_waveforms[-1] = out_waveform
                 except subprocess.CalledProcessError as e:
                     audio_dbg += f"** Audio failed (rc={e.returncode}): {e.stderr}\n"
                     raise RuntimeError(f"SoX failed: {e.stderr}")

@@ -15,8 +15,8 @@ class SoxNodeUtils:
     def render_sox_plot_to_image(
             sox_plot_script_path,
             output_image='transfer_function.png',
-            width=1000,
-            height=600
+            x=800,
+            y=240
     ):
         """
         Renders a SoX --plot gnuplot script to a PNG file.
@@ -25,14 +25,14 @@ class SoxNodeUtils:
 
         # Example usage after you ran:
         # sox --plot gnuplot -n -n fir coeffs.txt > fir_plot.gp
-        # render_sox_plot_to_image('fir_plot.gp', 'fir_response.png', width=1200, height=700)
+        # render_sox_plot_to_image('fir_plot.gp', 'fir_response.png', x=1200, y=700)
         """
         if not os.path.exists(sox_plot_script_path):
             raise FileNotFoundError(f"Script not found: {sox_plot_script_path}")
 
         # Commands to force PNG output and avoid interactive window
         commands = [
-            "set terminal pngcairo size {width},{height} enhanced font 'Arial,10'".format(width=width, height=height),
+            "set terminal pngcairo size {x},{y} enhanced font 'Arial,10'".format(x=x, y=y),
             f"set output '{output_image}'",
             f"load '{sox_plot_script_path}'",
             "unset output",

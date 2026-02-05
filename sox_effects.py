@@ -14,6 +14,11 @@ from .sox_node_utils import SoxNodeUtils
 
 class SoxApplyEffectsNode:
     # Tested: DGS v0.1.3
+    """
+    TODO: Add the ability to graph all graphable effect and combine them into one graph.
+          - calculate and plot the combined Final Net Response.
+          - calculate and plot original an audio's characteristics vs and how it is affected by the chain of effects.
+    """
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -149,18 +154,20 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         plot_dbg += "---> Saving plot...\n"
                         base_prefix = plot_file_prefix.strip()
                         if not base_prefix:
-                            plot_dbg += "Save skipped: Empty plot_file_prefix.\n"
+                            plot_dbg += "- Save skipped: Empty plot_file_prefix.\n"
                         else:
                             # The full dir path
-                            dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}_0001.png")) or '.'
+                            dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
                             # Get filename prefix from plot_file_prefix
                             filename_prefix = os.path.basename(base_prefix)
+                            plot_dbg += f"- base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
                             os.makedirs(dir_path, exist_ok=True)
-                            pattern = rf"^{re.escape(base_prefix)}_(\d{{4}})\.png$"
+                            pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
                             nums = []
                             # Collects existing sequence numbers from matching plot files
                             try:
                                 for f in os.listdir(dir_path):
+                                    plot_dbg += f"   - {f}\n"
                                     m = re.match(pattern, f)
                                     if m:
                                         nums.append(int(m.group(1)))
@@ -170,6 +177,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                             filename = f"{filename_prefix}_{next_seq:04d}.png"
                             full_save_path = os.path.join(dir_path, filename)
                             shutil.copy2(png_path, full_save_path)
+                            plot_dbg += f"- filename: {filename}  full_save_path: {full_save_path}\n"
                             plot_dbg += f"--> ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
                     else:
                         plot_dbg += "Save skipped: save_sox_plot=False.\n"

@@ -252,6 +252,7 @@ class SoxUtilSpectrogramNode:
                             dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}_{label}_000.png")) or '.'
                             pattern = rf"^{re.escape(base_prefix)}_{re.escape(label)}_(\\d{{3}})\\\.png$"
                             nums = []
+                            # Collects existing sequence numbers from directory files matching pattern
                             try:
                                 for f in os.listdir(dir_path):
                                     m = re.match(pattern, f)

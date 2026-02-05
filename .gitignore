@@ -87,6 +87,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Spyder project settings
 .spyderproject
 .spyproject-local
@@ -111,6 +116,10 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# node.js
+node_modules/
+
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

@@ -7,6 +7,7 @@ import os
 import shlex
 import shutil
 
+
 class SoxNodeUtils:
     """
     Static methods used by ComfyUI_Sox_Effects Nodes

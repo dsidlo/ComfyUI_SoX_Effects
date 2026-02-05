@@ -2,16 +2,18 @@ import subprocess
 import tempfile
 import os
 import shlex
-import torch
 import torchaudio
 import numpy as np
-import uuid
-import re
 import struct
 import shutil
-from PIL import Image
 import torch
-from .sox_node_utils import SoxNodeUtils as sxu
+
+# Check if the program is being run by bytest
+if os.environ.get('PYTEST_VERSION'):
+    from sox_node_utils import SoxNodeUtils
+else:
+    from .sox_node_utils import SoxNodeUtils
+
 
 # All SoxVoice* nodes here - code copied from __init__.py lines 2286-3143
 

@@ -5,12 +5,16 @@ import os
 import torch
 import torchaudio
 import numpy as np
-import uuid
 import re
 import shutil
-import struct
+
 from PIL import Image
-from .sox_node_utils import SoxNodeUtils
+# Check if the program is being run by bytest
+if os.environ.get('PYTEST_VERSION'):
+    from sox_node_utils import SoxNodeUtils
+else:
+    from .sox_node_utils import SoxNodeUtils
+
 
 class SoxApplyEffectsNode:
     # Tested: DGS v0.1.3

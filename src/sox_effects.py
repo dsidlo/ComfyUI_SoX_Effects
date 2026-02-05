@@ -780,7 +780,7 @@ class SoxFirNode:
     @classmethod
     def INPUT_TYPES(cls):
         # Get filename from ./fir_coeffs/
-        fir_coeffs_dir = "custom_nodes/ComfyUI_SoX_Effects/fir_coeffs/"
+        fir_coeffs_dir = "fir_coeffs/"
         fir_files = []
         if os.path.exists(fir_coeffs_dir) and os.path.isdir(fir_coeffs_dir):
             with os.scandir(fir_coeffs_dir) as entries:
@@ -792,7 +792,7 @@ class SoxFirNode:
             "required": {
                 "audio": ("AUDIO",),
                 "enable_fir": ("BOOLEAN", {"default": True, "tooltip": "Enable/Disable SoxFirNode"}),
-                "fir_coefficients": (fir_files, {"multiline": True, "default": fir_files[0]}),
+                "fir_coefficients": (fir_files, {"multiline": True, "default": fir_files[0] if fir_files else "test.fir"}),
             },
             "optional": {
                 "sox_params": ("SOX_PARAMS",),
@@ -808,7 +808,7 @@ class SoxFirNode:
     # python
     # python
     def process(self, audio, enable_fir=True, fir_coefficients="", sox_params=None):
-        fir_coeffs_dir = "custom_nodes/ComfyUI_SoX_Effects/fir_coeffs/"
+        fir_coeffs_dir = "fir_coeffs/"
         fir_file_map = {}
         if os.path.exists(fir_coeffs_dir) and os.path.isdir(fir_coeffs_dir):
             with os.scandir(fir_coeffs_dir) as entries:

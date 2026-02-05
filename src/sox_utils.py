@@ -1389,8 +1389,13 @@ class SoxUtilAudioReportNode:
         tmpdir = tempfile.mkdtemp(prefix='sox_report_')
         tmp_file = os.path.join(tmpdir, "audio.wav")
         try:
-            sr = int(audio["sample_rate"])
-            waveform = audio["waveform"][0]  # [C, T]
+            if isinstance(audio, dict):
+                audio_waveform = audio["waveform"]
+                audio_sr = audio["sample_rate"]
+            else:
+                audio_waveform, audio_sr = audio
+            sr = int(audio_sr)
+            waveform = audio_waveform[0]  # [C, T]
             self._save_wav(tmp_file, waveform, sr)
 
             # Build command strings (always for dbg)

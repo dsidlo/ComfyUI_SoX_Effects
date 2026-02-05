@@ -10,7 +10,13 @@ import re
 import shutil
 import struct
 from PIL import Image
-from sox_node_utils import SoxNodeUtils
+import os
+
+# Check if the program is being run by bytest
+if os.environ.get('PYTEST_VERSION'):
+    from sox_node_utils import SoxNodeUtils
+else:
+    from .sox_node_utils import SoxNodeUtils
 
 class SoxApplyEffectsNode:
     # Tested: DGS v0.1.3

@@ -17,9 +17,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "bandit>=1.9.3",
     "pytest >=7.4.0",
     "hypothesis >=6.68.0",
     "pytest-cov >=4.0.0",
+    "semgrep>=1.151.0",
 ]
 
 [tool.pytest.ini_options]

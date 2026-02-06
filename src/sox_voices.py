@@ -1124,6 +1124,65 @@ class SoxVeAlienGhostNode:
                     f.seek(chunk_size + (chunk_size % 2), 1)
             raise ValueError("No data chunk")
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_alien_ghost=True,
                 pitch_shift=180,
                 chorus_gain_in=0.5, chorus_gain_out=0.9, chorus_delay=40.0,
@@ -1483,6 +1542,65 @@ class SoxVeEchoCaveNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Echo Cave: echo 0.8 0.88 6 0.6 — Spacious repeats."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_echo_cave=True, echo_gain_in=0.8, echo_gain_out=0.88, echo_delay_1=6.0, echo_decay_1=0.6, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["echo", str(echo_gain_in), str(echo_gain_out), str(echo_delay_1), str(echo_decay_1)]
@@ -1534,6 +1652,65 @@ class SoxVeTelephoneNode:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Telephone: highpass 300 lowpass 3000 — Muffled band-pass."
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_telephone=True, highpass_freq=300.0, lowpass_freq=3000.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
@@ -1587,6 +1764,65 @@ class SoxVeMonsterNode:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Distorted Monster: overdrive 20 20 — Gritty clipping."
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_monster=True, intensity=1.0, overdrive_gain=20.0, overdrive_color=20.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
@@ -1644,6 +1880,65 @@ class SoxVeCompandRobotNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Compressed Robot: compand 0.3,0.8 6:-70,-60,-20 — Punchy dynamic squeeze."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_compand_robot=True, intensity=1.0, compand_attack=0.3, compand_release=0.8, compand_points="6:-70,-60,-20", prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         attack_str = f"{compand_attack * intensity},{compand_release * intensity}"
@@ -1698,6 +1993,65 @@ class SoxVeBoomyDemonNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Boomy Demon: lowpass -1 200 — Muddy rumble."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_boomy_demon=True, lowpass_rolloff="-1", lowpass_width=200.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["lowpass", lowpass_rolloff, str(lowpass_width)]
@@ -1751,6 +2105,65 @@ class SoxVeWitchNode:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Screechy Witch: treble +20 5000 0.5q — Harsh highs."
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_witch=True, intensity=1.0, treble_gain=20.0, treble_freq=5000.0, treble_width=0.5, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
@@ -1807,6 +2220,65 @@ class SoxVeWarbleNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Warble: bend 4000 sin(0.3) 800 sin(1) — Pitch wobble."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_warble=True, bend_high=4000.0, bend_low=800.0, wave_high="sin(0.3)", wave_low="sin(1)", prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["bend", str(bend_high), wave_high, str(bend_low), wave_low]
@@ -1861,6 +2333,65 @@ class SoxVeTempleNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Temple Reverb: reverb 80 50 100 0 — Long decay hall."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_temple=True, reverb_reverberance=80.0, reverb_hf=50.0, reverb_room=100.0, reverb_damp=0.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["reverb", str(reverb_reverberance), str(reverb_hf), str(reverb_room), str(reverb_damp)]
@@ -1912,6 +2443,65 @@ class SoxVeSquirrelNode:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Fast Squirrel: speed 1.5 — Chipmunk + faster."
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_squirrel=True, intensity=1.0, speed_factor=1.5, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
@@ -1966,6 +2556,65 @@ class SoxVeGiantNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Slow Giant: tempo 0.8 — Time-stretch without pitch drop."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_giant=True, intensity=1.0, tempo_factor=0.8, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         scaled_tempo = tempo_factor * intensity
@@ -2019,6 +2668,65 @@ class SoxVeVibratoNode:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Vibrato: tremolo 0.3 90 — Pitch modulation."
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_vibrato=True, intensity=1.0, tremolo_speed=0.3, tremolo_depth=90.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
@@ -2126,6 +2834,65 @@ class SoxVeCartoonDuckNode:
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Cartoon Duck: pitch +5 chorus 0.4 0.8 40 0.3 0.2 3 speed 1.1 — Squawky wobble."
 
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
+
     def process(self, audio, enable_voice_cartoon_duck=True, intensity=1.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         pitch_shift = int(5 * intensity)
@@ -2177,6 +2944,65 @@ class SoxVeDarthVaderNode:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Darth Vader: pitch -7 lowpass -1 800 reverb 50 50 100 0 — Breathing mask reverb."
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_darth_vader=True, intensity=1.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
@@ -2259,6 +3085,65 @@ class SoxVeOldWitchNode:
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Voices"
     DESCRIPTION = "Old Witch: pitch -3 treble +12 phaser 0.6 0.5 2 0.3 0.4 — Cackly swirl."
+
+    @staticmethod
+    def _save_wav(filename, tensor, sample_rate):
+        channels = tensor.shape[0]
+        if channels == 1:
+            data = tensor[0].cpu().numpy().astype(np.float32)
+        else:
+            data = tensor.transpose(0, 1).contiguous().flatten().cpu().numpy().astype(np.float32)
+        byte_rate = sample_rate * channels * 4
+        block_align = channels * 4
+        fmt_chunk_size = 16
+        fmt_chunk = struct.pack("<HHIIHH", 3, channels, sample_rate, byte_rate, block_align, 32)
+        data_chunk = data.tobytes()
+        data_size = len(data) * 4
+        riff_size = 36 + data_size
+        header = struct.pack("<4sI4s4sI", b"RIFF", riff_size, b"WAVE", b"fmt ", fmt_chunk_size) + fmt_chunk + struct.pack("<4sI", b"data", data_size)
+        with open(filename, "wb") as f:
+            f.write(header + data_chunk)
+
+    @staticmethod
+    def _load_wav(filename):
+        with open(filename, "rb") as f:
+            if f.read(4) != b'RIFF':
+                raise ValueError("Not RIFF")
+            riff_size = struct.unpack('<I', f.read(4))[0]
+            if f.read(4) != b'WAVE':
+                raise ValueError("Not WAVE")
+            sr = None
+            channels = None
+            while True:
+                chunk_id = f.read(4)
+                if len(chunk_id) < 4:
+                    raise ValueError("Truncated file")
+                chunk_size = struct.unpack('<I', f.read(4))[0]
+                chunk_data_start = f.tell()
+                if chunk_id == b'fmt ':
+                    fmt_hdr = f.read(chunk_size)
+                    if len(fmt_hdr) < 16:
+                        raise ValueError("Short fmt")
+                    fmt = struct.unpack('<HHIIHH', fmt_hdr[:16])
+                    if fmt[0] != 3 or fmt[5] != 32:
+                        raise ValueError(f"Not float32 (fmt={fmt[0]}, bits={fmt[5]})")
+                    channels = fmt[1]
+                    sr = fmt[2]
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                elif chunk_id == b'data':
+                    data_bytes = f.read(chunk_size)
+                    data_size = len(data_bytes)
+                    data_bytes = data_bytes[:data_size // 4 * 4]
+                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    if len(data) % channels != 0:
+                        data = data[:len(data) // channels * channels]
+                    data = data.reshape(channels, -1)
+                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
+                    return waveform, sr
+                else:
+                    f.seek(chunk_size + (chunk_size % 2), 1)
+            raise ValueError("No data chunk")
 
     def process(self, audio, enable_voice_old_witch=True, intensity=1.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []

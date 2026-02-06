@@ -1133,13 +1133,6 @@ class SoxVeAlienGhostNode:
                 prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         chorus_wave_flag = "-t" if chorus_wave == "tri" else "-s"
-        
-        # Approximate the 2-step process with a single chain for preview simplification,
-        # or implement it correctly by mixing. 
-        # For preview, we'll do the requested: mix input + (reversed -> reverb -> reversed)
-        # However, 'sox_params' for CLI usually refers to a single linear chain.
-        # We will provide a linear approximation: reverse reverb reverse pitch chorus highpass gain.
-        # This creates the "pre-echo" effect.
         effect_params = [
             "reverse",
             "reverb", str(reverb_reverberance), str(reverb_hf_damping), str(reverb_roomscale), str(reverb_stereo_depth), "0", "0",
@@ -1149,7 +1142,6 @@ class SoxVeAlienGhostNode:
             "highpass", str(highpass_freq),
             "gain", f"{gain_adjust}"
         ]
-        
         cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_alien_ghost:
@@ -1161,20 +1153,10 @@ class SoxVeAlienGhostNode:
                 sr = int(audio["sample_rate"])
                 waveform = audio["waveform"].squeeze(0)
                 self._save_wav(tmp_in, waveform, sr)
-                
-                # Executing the full mix logic for preview:
-                # sox -m input.wav <(sox input.wav -p reverse reverb ... reverse) output.wav ...
-                # Since shlex.join doesn't like process substitution, we'll use temp files.
-                tmp_rev = os.path.join(tmpdir, "rev_reverb.wav")
-                rev_cmd = ["sox", tmp_in, tmp_rev, "reverse", "reverb", str(reverb_reverberance), str(reverb_hf_damping), str(reverb_roomscale), str(reverb_stereo_depth), "0", "0", "reverse"]
-                subprocess.run(rev_cmd, capture_output=True)
-                
-                mix_cmd = ["sox", "-m", tmp_in, tmp_rev, tmp_out, "pitch", f"+{pitch_shift}", "chorus", str(chorus_gain_in), str(chorus_gain_out), str(chorus_delay), str(chorus_decay), str(chorus_speed), str(chorus_depth), chorus_wave_flag, "highpass", str(highpass_freq), "gain", f"{gain_adjust}"]
-                
-                full_cmd_str = "Preview using: " + shlex.join(mix_cmd)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
                 dbg_text = "** Enabled **\n" + full_cmd_str
-                result = subprocess.run(mix_cmd, capture_output=True, text=True)
-                
+                result = subprocess.run(cmd, capture_output=True, text=True)
                 if result.returncode != 0:
                     dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
                     processed_audio = audio
@@ -1504,21 +1486,34 @@ class SoxVeEchoCaveNode:
     def process(self, audio, enable_voice_echo_cave=True, echo_gain_in=0.8, echo_gain_out=0.88, echo_delay_1=6.0, echo_decay_1=0.6, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["echo", str(echo_gain_in), str(echo_gain_out), str(echo_delay_1), str(echo_decay_1)]
-        if enable_voice_echo_cave:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav echo_cave.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_echo_cave:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1543,21 +1538,34 @@ class SoxVeTelephoneNode:
     def process(self, audio, enable_voice_telephone=True, highpass_freq=300.0, lowpass_freq=3000.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["highpass", str(highpass_freq), "lowpass", str(lowpass_freq)]
-        if enable_voice_telephone:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav telephone.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_telephone:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1585,21 +1593,34 @@ class SoxVeMonsterNode:
         scaled_gain = int(overdrive_gain * intensity)
         scaled_color = int(overdrive_color * intensity)
         effect_params = ["overdrive", str(scaled_gain), str(scaled_color)]
-        if enable_voice_monster:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav monster.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_monster:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1628,21 +1649,34 @@ class SoxVeCompandRobotNode:
         attack_str = f"{compand_attack * intensity},{compand_release * intensity}"
         compand_str = f"{attack_str} {compand_points}"
         effect_params = ["compand"] + shlex.split(compand_str)
-        if enable_voice_compand_robot:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav compand_robot.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_compand_robot:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1667,21 +1701,34 @@ class SoxVeBoomyDemonNode:
     def process(self, audio, enable_voice_boomy_demon=True, lowpass_rolloff="-1", lowpass_width=200.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["lowpass", lowpass_rolloff, str(lowpass_width)]
-        if enable_voice_boomy_demon:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav boomy_demon.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_boomy_demon:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1709,21 +1756,34 @@ class SoxVeWitchNode:
         current_params = prev_params["sox_params"] if prev_params else []
         scaled_gain = treble_gain * intensity
         effect_params = ["treble", f"+{scaled_gain}", str(treble_freq), f"{treble_width}q"]
-        if enable_voice_witch:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav witch.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_witch:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1750,21 +1810,34 @@ class SoxVeWarbleNode:
     def process(self, audio, enable_voice_warble=True, bend_high=4000.0, bend_low=800.0, wave_high="sin(0.3)", wave_low="sin(1)", prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["bend", str(bend_high), wave_high, str(bend_low), wave_low]
-        if enable_voice_warble:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav warble.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_warble:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1791,21 +1864,34 @@ class SoxVeTempleNode:
     def process(self, audio, enable_voice_temple=True, reverb_reverberance=80.0, reverb_hf=50.0, reverb_room=100.0, reverb_damp=0.0, prev_params=None):
         current_params = prev_params["sox_params"] if prev_params else []
         effect_params = ["reverb", str(reverb_reverberance), str(reverb_hf), str(reverb_room), str(reverb_damp)]
-        if enable_voice_temple:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav temple.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_temple:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1831,21 +1917,34 @@ class SoxVeSquirrelNode:
         current_params = prev_params["sox_params"] if prev_params else []
         scaled_speed = speed_factor * intensity
         effect_params = ["speed", str(scaled_speed)]
-        if enable_voice_squirrel:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav squirrel.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_squirrel:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1871,21 +1970,34 @@ class SoxVeGiantNode:
         current_params = prev_params["sox_params"] if prev_params else []
         scaled_tempo = tempo_factor * intensity
         effect_params = ["tempo", str(scaled_tempo)]
-        if enable_voice_giant:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav giant.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_giant:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1913,21 +2025,34 @@ class SoxVeVibratoNode:
         scaled_speed = tremolo_speed * intensity
         scaled_depth = tremolo_depth * intensity
         effect_params = ["tremolo", str(scaled_speed), str(scaled_depth)]
-        if enable_voice_vibrato:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav vibrato.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_vibrato:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1953,21 +2078,34 @@ class SoxVeEvilDemonNode:
         pitch_shift = int(-8 * intensity)
         bass_gain = 10 * intensity
         effect_params = ["pitch", f"{pitch_shift}", "bass", f"+{bass_gain}", "tremolo", "0.15", "80"]
-        if enable_voice_evil_demon:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav evil_demon.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_evil_demon:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -1992,21 +2130,34 @@ class SoxVeCartoonDuckNode:
         current_params = prev_params["sox_params"] if prev_params else []
         pitch_shift = int(5 * intensity)
         effect_params = ["pitch", f"+{pitch_shift}", "chorus", "0.4", "0.8", "40", "0.3", "0.2", "3", "speed", "1.1"]
-        if enable_voice_cartoon_duck:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav cartoon_duck.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_cartoon_duck:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -2031,21 +2182,34 @@ class SoxVeDarthVaderNode:
         current_params = prev_params["sox_params"] if prev_params else []
         pitch_shift = int(-7 * intensity)
         effect_params = ["pitch", f"{pitch_shift}", "lowpass", "-1", "800", "reverb", "50", "50", "100", "0"]
-        if enable_voice_darth_vader:
-            processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                audio["waveform"],
-                int(audio["sample_rate"]),
-                effect_params,
-                channels_first=True,
-            )
-            processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
-        else:
-            processed_audio = audio
-        cmd_str = f"sox voice.wav darth_vader.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_darth_vader:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
+            try:
+                sr = int(audio["sample_rate"])
+                waveform = audio["waveform"].squeeze(0)
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+            except Exception as e:
+                dbg_text += f"\n*** SoX failed: {str(e)}"
+                processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+        else:
+            processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)
 
 
@@ -2101,23 +2265,32 @@ class SoxVeOldWitchNode:
         pitch_shift = int(-3 * intensity)
         treble_gain = 12 * intensity
         effect_params = ["pitch", f"{pitch_shift}", "treble", f"+{treble_gain}", "phaser", "0.6", "0.5", "2", "0.3", "0.4"]
-        cmd_str = f"sox voice.wav old_witch.wav {' '.join(effect_params)}"
+        cmd_str = f"sox input.wav output.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_voice_old_witch:
-            dbg_text = "** Enabled **\\n" + cmd_str
             current_params.extend(effect_params)
+            tmpdir = tempfile.mkdtemp(prefix='sox_')
+            tmp_in = os.path.join(tmpdir, "input.wav")
+            tmp_out = os.path.join(tmpdir, "output.wav")
             try:
+                sr = int(audio["sample_rate"])
                 waveform = audio["waveform"].squeeze(0)
-                processed_waveform, processed_sr = torchaudio.sox_effects.apply_effects_tensor(
-                    waveform,
-                    int(audio["sample_rate"]),
-                    effect_params,
-                    channels_first=True,
-                )
-                processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
+                self._save_wav(tmp_in, waveform, sr)
+                cmd = ["sox", tmp_in, tmp_out] + effect_params
+                full_cmd_str = shlex.join(cmd)
+                dbg_text = "** Enabled **\n" + full_cmd_str
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    dbg_text += f"\n*** SoX CLI failed (rc={result.returncode}):\n{result.stderr.strip() if result.stderr else 'No stderr'}"
+                    processed_audio = audio
+                else:
+                    processed_waveform, processed_sr = self._load_wav(tmp_out)
+                    processed_audio = {"waveform": processed_waveform, "sample_rate": processed_sr}
             except Exception as e:
-                dbg_text += f"\\nPreview failed: {str(e)}"
+                dbg_text += f"\n*** SoX failed: {str(e)}"
                 processed_audio = audio
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
         else:
             processed_audio = audio
         return (audio, processed_audio, {"sox_params": current_params}, dbg_text)

@@ -2,7 +2,6 @@ import subprocess
 import tempfile
 import os
 import shlex
-import torchaudio
 import numpy as np
 import struct
 import shutil

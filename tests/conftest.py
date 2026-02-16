@@ -17,7 +17,7 @@ node_list = [
 
 NODE_CLASS_MAPPINGS = {}
 for module_name in node_list:
-    imported_module = importlib.import_module(module_name)
+    imported_module = importlib.import_module("src." + module_name)
     if hasattr(imported_module, 'NODE_CLASS_MAPPINGS'):
         NODE_CLASS_MAPPINGS.update(imported_module.NODE_CLASS_MAPPINGS)
 

@@ -426,12 +426,27 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         """
         results = []
         
-        # Create dummy audio file for SoX --plot
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-            # Create silent 1-second audio
-            dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
-            torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
-            input_path = temp_input.name
+        # Handle case where torchcodec is not available
+        try:
+            # Create dummy audio file for SoX --plot
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+                # Create silent 1-second audio
+                dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
+                torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
+                input_path = temp_input.name
+        except ImportError as e:
+            # If torchcodec is not available, return error for all effects
+            for effect_info in plottable_effects:
+                results.append({
+                    'effect': effect_info['effect'],
+                    'args': effect_info['args'],
+                    'gnuplot_formula': '',
+                    'xrange': None,
+                    'yrange': None,
+                    'step': None,
+                    'error': f"Audio file creation failed: {str(e)}"
+                })
+            return results
         
         output_path = tempfile.mktemp(suffix='.wav')
         

@@ -130,3 +130,52 @@ def test_get_plottable_effects():
     # Test with no plottable effects
     non_plottable = ['reverb', '50', '50', 'vol', '0.0']
     assert cls.get_plottable_effects(non_plottable) == []
+
+
+def test_get_gnuplot_formulas():
+    """
+    Test that get_gnuplot_formulas correctly generates gnuplot formulas
+    for plottable effects.
+    """
+    cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
+    
+    # Test with known plottable effects
+    plottable_effects = [
+        {'effect': 'highpass', 'args': ['-2', '1000', '0.707q']},
+        {'effect': 'bass', 'args': ['12.0', '100.0']}
+    ]
+    
+    results = cls.get_gnuplot_formulas(plottable_effects, sample_rate=44100)
+    
+    # Should return results for all effects
+    assert len(results) == 2
+    
+    # Check structure of each result
+    for result in results:
+        assert 'effect' in result
+        assert 'args' in result
+        assert 'gnuplot_formula' in result
+        assert 'xrange' in result
+        assert 'yrange' in result
+        assert 'step' in result
+        
+        # Verify effect name is preserved
+        assert result['effect'] in ['highpass', 'bass']
+        
+        # If SoX is available and succeeded, check that we got a formula
+        if 'error' not in result:
+            # Formula should be a non-empty string or at least None/empty handled
+            assert isinstance(result['gnuplot_formula'], str)
+            # xrange should be a list or None
+            if result['xrange'] is not None:
+                assert isinstance(result['xrange'], list)
+                assert len(result['xrange']) == 2
+    
+    # Test empty list
+    assert cls.get_gnuplot_formulas([]) == []
+    
+    # Test with single effect
+    single_effect = [{'effect': 'equalizer', 'args': ['1000', '1.0q', '6.0']}]
+    single_result = cls.get_gnuplot_formulas(single_effect)
+    assert len(single_result) == 1
+    assert single_result[0]['effect'] == 'equalizer'

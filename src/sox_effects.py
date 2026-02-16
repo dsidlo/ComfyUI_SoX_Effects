@@ -402,6 +402,283 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         
         return plottable_effects
 
+    @staticmethod
+    def get_gnuplot_formulas(plottable_effects, sample_rate=44100):
+        """
+        Generate gnuplot formulas for each plottable effect by running SoX --plot.
+        
+        For each plottable effect, generates a .gnu plot file using SoX --plot,
+        then extracts the gnuplot formula, limiting parameters (xrange, yrange),
+        and step information.
+        
+        Args:
+            plottable_effects: List of dicts from get_plottable_effects()
+            sample_rate: Sample rate for the dummy audio file (default 44100)
+            
+        Returns:
+            List of dicts containing:
+            - 'effect': effect name
+            - 'args': effect arguments
+            - 'gnuplot_formula': the plot formula string
+            - 'xrange': x-axis limits [min, max] or None
+            - 'yrange': y-axis limits [min, max] or None  
+            - 'step': step size or None (extracted from xrange/samples)
+        """
+        results = []
+        
+        # Create dummy audio file for SoX --plot
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+            # Create silent 1-second audio
+            dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
+            torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
+            input_path = temp_input.name
+        
+        output_path = tempfile.mktemp(suffix='.wav')
+        
+        try:
+            for effect_info in plottable_effects:
+                effect_name = effect_info['effect']
+                args = effect_info['args']
+                
+                # Build SoX command with just this effect
+                plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path, effect_name] + args
+                
+                try:
+                    result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
+                    gnuplot_script = result.stdout
+                    
+                    # Parse the gnuplot script
+                    formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
+                    
+                    results.append({
+                        'effect': effect_name,
+                        'args': args,
+                        'gnuplot_formula': formula_data.get('formula', ''),
+                        'xrange': formula_data.get('xrange'),
+                        'yrange': formula_data.get('yrange'),
+                        'step': formula_data.get('step')
+                    })
+                except Exception as e:
+                    # If SoX fails for this effect, still include it with error info
+                    results.append({
+                        'effect': effect_name,
+                        'args': args,
+                        'gnuplot_formula': '',
+                        'xrange': None,
+                        'yrange': None,
+                        'step': None,
+                        'error': str(e)
+                    })
+        finally:
+            # Cleanup temp files
+            if os.path.exists(input_path):
+                os.remove(input_path)
+            if os.path.exists(output_path):
+                os.remove(output_path)
+        
+        return results
+
+    @staticmethod
+    def _parse_gnuplot_script(script):
+        """
+        Parse a gnuplot script to extract formula, ranges, and step.
+        
+        Args:
+            script: String containing gnuplot commands
+            
+        Returns:
+            Dict with 'formula', 'xrange', 'yrange', 'step'
+        """
+        formula_data = {
+            'formula': '',
+            'xrange': None,
+            'yrange': None,
+            'step': None
+        }
+        
+        lines = script.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Extract xrange
+            if line.startswith('set xrange'):
+                # Parse "set xrange [min:max]" or "set xrange [*:*]"
+                match = re.search(r'\[([^:]+):([^]]+)\]', line)
+                if match:
+                    xmin_str, xmax_str = match.group(1), match.group(2)
+                    try:
+                        xmin = float(xmin_str) if xmin_str != '*' else None
+                        xmax = float(xmax_str) if xmax_str != '*' else None
+                        formula_data['xrange'] = [xmin, xmax]
+                        
+                        # Calculate step if we have valid range
+                        if xmin is not None and xmax is not None:
+                            # Default samples is usually 1000 in gnuplot
+                            samples = 1000
+                            # Check if samples is set explicitly
+                            for l in lines:
+                                if l.strip().startswith('set samples'):
+                                    samples_match = re.search(r'samples\s+(\d+)', l)
+                                    if samples_match:
+                                        samples = int(samples_match.group(1))
+                                        break
+                            formula_data['step'] = (xmax - xmin) / samples
+                    except ValueError:
+                        pass
+            
+            # Extract yrange
+            elif line.startswith('set yrange'):
+                match = re.search(r'\[([^:]+):([^]]+)\]', line)
+                if match:
+                    ymin_str, ymax_str = match.group(1), match.group(2)
+                    try:
+                        ymin = float(ymin_str) if ymin_str != '*' else None
+                        ymax = float(ymax_str) if ymax_str != '*' else None
+                        formula_data['yrange'] = [ymin, ymax]
+                    except ValueError:
+                        pass
+            
+            # Extract samples setting
+            elif line.startswith('set samples'):
+                samples_match = re.search(r'samples\s+(\d+)', line)
+                if samples_match and formula_data['xrange']:
+                    samples = int(samples_match.group(1))
+                    xmin, xmax = formula_data['xrange']
+                    if xmin is not None and xmax is not None:
+                        formula_data['step'] = (xmax - xmin) / samples
+            
+            # Extract formula from plot command
+            # Look for lines like: plot ... title '...' with lines, ...
+            elif line.startswith('plot') or line.startswith('replot'):
+                # Extract the formula part after 'plot' and before 'title' or 'with'
+                # Example: plot [0:22050] 20*log10(abs(1/sqrt((1+($1/1000)**2)))) title 'highpass' with lines
+                plot_match = re.search(r'plot\s+(?:\[.*?\]\s+)?(.*?)(?:\s+title|\s+with|$)', line)
+                if plot_match:
+                    formula_data['formula'] = plot_match.group(1).strip()
+                else:
+                    # Fallback: just take everything after 'plot'
+                    formula_data['formula'] = line[4:].strip()
+        
+        return formula_data
+
+
+class SoxAllpassNode:
+        
+        Plottable effects (transfer-function based) per SoX --plot documentation:
+        equalizer, highpass, lowpass, bandpass, bandreject, allpass, 
+        sinc, fir, biquad, compand, bass, treble
+        
+        Args:
+            sox_params: List of SoX effect parameters (effect name followed by args)
+            
+        Returns:
+            List of dicts: [{'effect': name, 'args': [arg1, arg2, ...]}, ...]
+        """
+        # Effects that support --plot visualization
+        plottable_names = {
+            'equalizer', 'highpass', 'lowpass', 'bandpass', 'bandreject',
+            'allpass', 'sinc', 'fir', 'biquad', 'compand', 'bass', 'treble'
+        }
+        
+        # Known effect names to distinguish from arguments
+        all_effect_names = {
+            'allpass', 'band', 'bandpass', 'bandreject', 'bass', 'bend', 'biquad',
+            'channels', 'chorus', 'compand', 'contrast', 'dcshift', 'deemph', 'delay',
+            'dither', 'downsample', 'earwax', 'echo', 'echos', 'equalizer', 'fade',
+            'fir', 'flanger', 'gain', 'highpass', 'hilbert', 'ladspa', 'loudness',
+            'lowpass', 'mcompand', 'noiseprof', 'noisered', 'norm', 'oops', 'overdrive',
+            'pad', 'phaser', 'pitch', 'rate', 'remix', 'repeat', 'reverb', 'reverse',
+            'riaa', 'silence', 'sinc', 'speed', 'splice', 'stat', 'stats', 'stretch',
+            'swap', 'synth', 'tempo', 'treble', 'tremolo', 'trim', 'upsample', 'vad',
+            'vol'
+        }
+        
+        plottable_effects = []
+        i = 0
+        n = len(sox_params)
+        
+        while i < n:
+            token = sox_params[i]
+            
+            if token in all_effect_names:
+                effect_name = token
+                i += 1
+                
+                if effect_name in plottable_names:
+                    args = []
+                    
+                    # Extract arguments based on effect type
+                    if effect_name == 'equalizer':
+                        # frequency width[q|o|h|k] gain (3 args)
+                        for _ in range(3):
+                            if i < n and sox_params[i] not in all_effect_names:
+                                args.append(sox_params[i])
+                                i += 1
+                                
+                    elif effect_name in ('highpass', 'lowpass'):
+                        # [-1|-2] frequency [width] (1-3 args)
+                        if i < n and sox_params[i] in ('-1', '-2'):
+                            args.append(sox_params[i])
+                            i += 1
+                        for _ in range(2):  # freq and optional width
+                            if i < n and sox_params[i] not in all_effect_names:
+                                args.append(sox_params[i])
+                                i += 1
+                                
+                    elif effect_name in ('bandpass', 'bandreject', 'allpass'):
+                        # 1-2 args each
+                        for _ in range(2):
+                            if i < n and sox_params[i] not in all_effect_names:
+                                args.append(sox_params[i])
+                                i += 1
+                                
+                    elif effect_name == 'sinc':
+                        # [-h] [-n|-t] [-k freq] freq ... (up to 5 tokens)
+                        for _ in range(5):
+                            if i < n and sox_params[i] not in all_effect_names:
+                                args.append(sox_params[i])
+                                i += 1
+                                
+                    elif effect_name == 'fir':
+                        # coeffs_file (1 arg)
+                        if i < n and sox_params[i] not in all_effect_names:
+                            args.append(sox_params[i])
+                            i += 1
+                            
+                    elif effect_name == 'biquad':
+                        # frequency gain BW|Q|S [norm] (3-4 args)
+                        for _ in range(4):
+                            if i < n and sox_params[i] not in all_effect_names:
+                                args.append(sox_params[i])
+                                i += 1
+                                
+                    elif effect_name == 'compand':
+                        # Complex arguments, collect until next effect
+                        while i < n and sox_params[i] not in all_effect_names:
+                            args.append(sox_params[i])
+                            i += 1
+                            
+                    elif effect_name in ('bass', 'treble'):
+                        # gain [frequency] [width] (1-3 args)
+                        for _ in range(3):
+                            if i < n and sox_params[i] not in all_effect_names:
+                                args.append(sox_params[i])
+                                i += 1
+                    
+                    plottable_effects.append({
+                        'effect': effect_name,
+                        'args': args
+                    })
+                else:
+                    # Skip arguments for non-plottable effects
+                    while i < n and sox_params[i] not in all_effect_names:
+                        i += 1
+            else:
+                i += 1
+        
+        return plottable_effects
+
 
 class SoxAllpassNode:
     @classmethod

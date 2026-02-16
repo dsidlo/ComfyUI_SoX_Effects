@@ -89,3 +89,44 @@ def test_process_defaults(node_name, mock_audio):
                 assert value is not None, f"Output {key} is None for {node_name}"
     except Exception as e:
         pytest.xfail(f"{node_name} defaults fail: {str(e)[:100]}")
+
+
+def test_get_plottable_effects():
+    """
+    Test that get_plottable_effects correctly identifies plottable effects
+    and extracts their arguments.
+    """
+    cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
+    
+    # Test with mix of plottable and non-plottable effects
+    sox_params = [
+        'highpass', '-2', '1000', '0.707q',  # plottable
+        'reverb', '50', '50', '100', '100', '0', '0',  # non-plottable
+        'equalizer', '1000', '1.0q', '6.0',  # plottable
+        'vol', '0.0',  # non-plottable
+        'bass', '12.0', '100.0'  # plottable
+    ]
+    
+    result = cls.get_plottable_effects(sox_params)
+    
+    # Should find 3 plottable effects
+    assert len(result) == 3
+    
+    # Check highpass
+    assert result[0]['effect'] == 'highpass'
+    assert result[0]['args'] == ['-2', '1000', '0.707q']
+    
+    # Check equalizer
+    assert result[1]['effect'] == 'equalizer'
+    assert result[1]['args'] == ['1000', '1.0q', '6.0']
+    
+    # Check bass
+    assert result[2]['effect'] == 'bass'
+    assert result[2]['args'] == ['12.0', '100.0']
+    
+    # Test empty list
+    assert cls.get_plottable_effects([]) == []
+    
+    # Test with no plottable effects
+    non_plottable = ['reverb', '50', '50', 'vol', '0.0']
+    assert cls.get_plottable_effects(non_plottable) == []

@@ -35,14 +35,14 @@ def all_node_classes():
 @pytest.fixture(params=[1, 2])
 def mock_audio(request):
     '''
-    Mock AUDIO input: (waveform, sample_rate)
+    Mock AUDIO input: {"waveform": waveform, "sample_rate": sr}
     '''
     channels = request.param
     sr = 44100
     duration = 1.0
     length = int(sr * duration)
     waveform = torch.randn(1, channels, length, dtype=torch.float32)
-    return (waveform, sr)
+    return {"waveform": waveform, "sample_rate": sr}
 
 def parse_input_types(cls):
     '''

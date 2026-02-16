@@ -89,11 +89,11 @@ class SoxVeDeepOldManNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -212,11 +212,11 @@ class SoxVeChipmunkChildNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -324,11 +324,11 @@ class SoxVeHeliumNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -442,11 +442,11 @@ class SoxVeRobotNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -560,11 +560,11 @@ class SoxVeAlienJabaNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -687,11 +687,11 @@ class SoxVeAlienHighNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -833,11 +833,11 @@ class SoxVeAlienRobotNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -977,11 +977,11 @@ class SoxVeAlienWarbleNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1113,11 +1113,11 @@ class SoxVeAlienGhostNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1172,11 +1172,11 @@ class SoxVeAlienGhostNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1308,11 +1308,11 @@ class SoxVeAlienDemonNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1455,11 +1455,11 @@ class SoxVeGhostNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1590,11 +1590,11 @@ class SoxVeEchoCaveNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1701,11 +1701,11 @@ class SoxVeTelephoneNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1813,11 +1813,11 @@ class SoxVeMonsterNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -1928,11 +1928,11 @@ class SoxVeCompandRobotNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2041,11 +2041,11 @@ class SoxVeBoomyDemonNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2154,11 +2154,11 @@ class SoxVeWitchNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2268,11 +2268,11 @@ class SoxVeWarbleNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2381,11 +2381,11 @@ class SoxVeTempleNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2492,11 +2492,11 @@ class SoxVeSquirrelNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2604,11 +2604,11 @@ class SoxVeGiantNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2717,11 +2717,11 @@ class SoxVeVibratoNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2882,11 +2882,11 @@ class SoxVeCartoonDuckNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -2993,11 +2993,11 @@ class SoxVeDarthVaderNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -3134,11 +3134,11 @@ class SoxVeOldWitchNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -3253,11 +3253,11 @@ class SoxVeMinionNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -3363,11 +3363,11 @@ class SoxVeTerminatorNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -3475,11 +3475,11 @@ class SoxVeFairyNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -3586,11 +3586,11 @@ class SoxVeZombieNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -3697,11 +3697,11 @@ class SoxVePirateNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:
@@ -3809,11 +3809,11 @@ class SoxVeSuperheroNode:
                     data_bytes = f.read(chunk_size)
                     data_size = len(data_bytes)
                     data_bytes = data_bytes[:data_size // 4 * 4]
-                    data = np.frombuffer(data_bytes, dtype=np.float32)
+                    data = np.frombuffer(data_bytes, dtype=np.float32).copy()
                     if len(data) % channels != 0:
                         data = data[:len(data) // channels * channels]
                     data = data.reshape(channels, -1)
-                    waveform = torch.from_numpy(data).unsqueeze(0)
+                    waveform = torch.from_numpy(data.copy()).unsqueeze(0)
                     f.seek(chunk_data_start + chunk_size + (chunk_size % 2), 0)
                     return waveform, sr
                 else:

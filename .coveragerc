@@ -1,0 +1,19 @@
+[run]
+source = src/
+branch = True
+omit =
+    */tests/*
+    */__init__.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    def __str__
+    raise AssertionError
+    raise NotImplementedError
+
+[paths]
+source =
+    src/
+    ./

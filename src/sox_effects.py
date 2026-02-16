@@ -982,12 +982,12 @@ class SoxDownsampleNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio": ("audio",),
-                "enable_downsample": ("boolean", {"default": True, "tooltip": "downsample factor"}),
-                "downsample_factor": ("int", {"default": 2, "min": 1, "max": 32, "step": 1}),
+                "audio": ("AUDIO",),
+                "enable_downsample": ("BOOLEAN", {"default": True, "tooltip": "downsample factor"}),
+                "downsample_factor": ("INT", {"default": 2, "min": 1, "max": 32, "step": 1}),
             },
             "optional": {
-                "sox_params": ("sox_params",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1012,11 +1012,11 @@ class SoxEarwaxNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio": ("audio",),
-                "enable_earwax": ("boolean", {"default": True, "tooltip": "earwax"}),
+                "audio": ("AUDIO",),
+                "enable_earwax": ("BOOLEAN", {"default": True, "tooltip": "earwax"}),
             },
             "optional": {
-                "sox_params": ("sox_params",),
+                "sox_params": ("SOX_PARAMS",),
             }
         }
 
@@ -1041,11 +1041,11 @@ class SoxFadeNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "audio": ("audio",),
-                "enable_fade": ("boolean", {"default": True, "tooltip": "fade [t|h] length [in/out]"}),
+                "audio": ("AUDIO",),
+                "enable_fade": ("BOOLEAN", {"default": True, "tooltip": "fade [t|h] length [in/out]"}),
                 "fade_type": (["h", "t"], {"default": "h"}),
-                "fade_in_length": ("float", {"default": 0.5, "min": 0.0, "max": 60.0, "step": 0.01}),
-                "fade_out_length": ("float", {"default": 0.5, "min": 0.0, "max": 60.0, "step": 0.01}),
+                "fade_in_length": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 60.0, "step": 0.01}),
+                "fade_out_length": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 60.0, "step": 0.01}),
             },
             "optional": {
                 "sox_params": ("SOX_PARAMS",),
@@ -2807,7 +2807,8 @@ class SoxTremoloNode:
             }
         }
 
-    RETURN_TYPES = ("AUDIO", "SOX_PARAMS")
+    RETURN_TYPES = ("AUDIO", "SOX_PARAMS", "STRING")
+    RETURN_NAMES = ("audio", "sox_params", "dbg-text")
     FUNCTION = "process"
     CATEGORY = "audio/SoX/Effects/Modulation"
     DESCRIPTION = "Tremolo SoX effect node for chaining."
@@ -2818,7 +2819,7 @@ class SoxTremoloNode:
         cmd_str = f"sox voice.wav vibrato.wav {' '.join(effect_params)}"
         dbg_text = cmd_str
         if enable_tremolo:
-            dbg_text = "** Enabled **\\n" + cmd_str
+            dbg_text = "** Enabled **\n" + cmd_str
             current_params.extend(effect_params)
         else:
             dbg_text = "tremolo disabled"

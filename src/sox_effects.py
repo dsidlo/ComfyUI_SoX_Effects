@@ -117,7 +117,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
 
         # Handle plotting if enabled (no audio processing; diagnostic only)
-        sox_plot_image = torch.zeros((1, 400, 800, 3), dtype=torch.uint8)  # Blank default
+        sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)  # Blank default
         plot_dbg = ""
         plot_script_path = None
         png_path = None
@@ -227,14 +227,14 @@ plot [10:22050] sin(x)
                         else:
                             pil_img = Image.open(png_path).convert("RGB")
                         img_array = np.array(pil_img)
-                        sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
+                        sox_plot_image = (torch.from_numpy(img_array).to(torch.float32) / 255.0).unsqueeze(0)  # [1, H, W, 3]
                         plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
                         plot_dbg += "==> ...Rendered Image is good."
                     else:
-                        sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8)
+                        sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
                         plot_dbg += f"** gnuplot failed: STDERR follows... **\n--- gnuplot stderr start ---\n{gnuplot_stderr}\n--- gnuplot stderr end ---\n"
                 except Exception as e:
-                    sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8)
+                    sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
                     plot_dbg += f"*** Exception ***: gnuplot Render failed\n{str(e)}\n--- open_plot ---\n{plot_dbg}\n--- open_plot end ---\n\n"
         for i in range(waveform.shape[0]):
             single_waveform = waveform[i]
@@ -297,7 +297,7 @@ plot [10:22050] sin(x)
         # Prepare image_out
         batch_imgs = []
         sox_dbg += "--- Prep Output Image ---\n"
-        if enable_apply and enable_sox_plot:
+        if enable_sox_plot:
             # PNG exists (/tmp/png_path), load IMAGE first
             try:
                 pil_img = Image.open(png_path)
@@ -309,7 +309,7 @@ plot [10:22050] sin(x)
                 sox_dbg += "Successful Output Image preparation.\n"
             except Exception as e:
                 sox_dbg += f"\n*** Exception Preparing Output Image:***\n{e}\n\n"
-                batch_imgs.append(torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8))
+                batch_imgs.append(torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32))
             finally:
                 # Cleanup temps
                 for path in [input_path, output_path, plot_script_path, png_path]:
@@ -318,7 +318,7 @@ plot [10:22050] sin(x)
                             os.remove(path)
                         except OSError:
                             pass
-            sox_plot_image = torch.cat(batch_imgs, dim=0)
+            sox_plot_image = torch.cat(batch_imgs, dim=0) if batch_imgs else torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
 
         # Combine debug
         full_dbg = f"Model Command: {cmd_str}\n\n=== plot_dbg ===\n{plot_dbg}\n=== plot_dbg end ===\n\n=== sox_dbg ===\n{sox_dbg}\n=== sox_dbg end ===\n".strip()

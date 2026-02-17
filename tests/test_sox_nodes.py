@@ -24,7 +24,7 @@ node_names = [
 @pytest.fixture
 def mock_audio():
     return {
-        'samples': torch.zeros(1, 44100),
+        'samples': torch.zeros((1, 1, 44100)),
         'sampling_rate': 44100
     }
 

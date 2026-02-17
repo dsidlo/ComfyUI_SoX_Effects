@@ -1140,11 +1140,16 @@ class SoxFirNode:
         # sort fir_files by name
         fir_files.sort()
 
+        if fir_files:
+            fir_spec = (fir_files, {"multiline": True, "default": fir_files[0]})
+        else:
+            fir_spec = ("STRING", {"multiline": True, "default": "", "tooltip": "No .fir files found; enter full path manually."})
+
         return {
             "required": {
                 "audio": ("AUDIO",),
                 "enable_fir": ("BOOLEAN", {"default": True, "tooltip": "Enable/Disable SoxFirNode"}),
-                "fir_coefficients": (fir_files, {"multiline": True, "default": fir_files[0]}),
+                "fir_coefficients": fir_spec,
             },
             "optional": {
                 "sox_params": ("SOX_PARAMS",),
@@ -1171,12 +1176,18 @@ class SoxFirNode:
 
         current_params = sox_params["sox_params"] if sox_params is not None else []
 
-        effect_params = ["fir"] + [fir_file_map[fir_coefficients]]
-
-        debug_str = shlex.join(effect_params)
-        if enable_fir and len(effect_params) > 1:
-            debug_str = "** Enabled **\n" + debug_str
-            current_params.extend(effect_params)
+        effect_params = []
+        debug_str = "No FIR coefficients file selected or directory empty"
+        if enable_fir and fir_coefficients:
+            if fir_coefficients in fir_file_map:
+                effect_params = ["fir", fir_file_map[fir_coefficients]]
+            else:
+                # Assume manual entry is full path or filename
+                effect_params = ["fir", fir_coefficients]
+            if effect_params:
+                debug_str = shlex.join(effect_params)
+                debug_str = "** Enabled **\n" + debug_str
+                current_params.extend(effect_params)
 
         return (audio, {"sox_params": current_params}, debug_str)
 

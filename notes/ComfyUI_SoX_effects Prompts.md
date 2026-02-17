@@ -1,12 +1,22 @@
 # ComfyUI-sox-effects Design
 
-## Design
+## Implement SoxApplyEffectsNode Multi-Layered Graph Incrementally
 
-A dialog box that automatically detects the available effects and provides a user-friendly interface for applying them.
+### 1. Loop Through Effects Stack and Plot Plottable Effects
 
-- use `sox -h to list available effects`
-- use `sox --help <effect> to get determine the parameters and usage of the effect`
-  - This gives us the list of switches, sliders and input parameters to present on the UI.
-  - Group the effects by Available. Depreciated '*', Experimental '+' and LibSox-only '#' in separate groups
-  - Available effects are shown first.
-  - 
+- Create a function called `get_plottable_effects` within the `SoxApplyEffectsNode` class.
+- Iterate through the effects stack in the `SoxApplyEffectsNode` class.
+- For each effect, check if it is plottable (i.e., has a visual representation).
+- If the effect is plottable, add it to a list of plottable effects.
+- Return the list of plottable effects for further processing.
+- Create a test to ensure the function works as expected.
+- Do nothing else.
+
+### 2. Implement Plottable Effects Visualization
+
+- Create a function called `get_gnuplot_formulas` within the `SoxApplyEffectsNode` class.
+- Use the list of plottable effects obtained from `get_plottable_effects` to generate visual representations.
+- Given the list of plottable effects, generate .gnu files of each effect and extract the gnuplot formula, limiting parameters, and step, from each .gnu plot file.
+- Return structured collection of the effect, effect parameters, gnuplot formula, limiting parameters, and step for each effect.
+- Create a test to ensure the function works as expected.
+- Do nothing else.

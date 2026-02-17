@@ -75,3 +75,30 @@ Enable process_modes for node and do equivalent for SoX effect using torch-audio
 - Join the discussion and share your experiences with the community.
 - Contribute to the project by submitting pull requests or improving documentation.
 
+
+
+## Development
+
+### Running Tests
+
+Install development dependencies:
+
+```bash
+pip install -e .[dev]
+```
+
+Run tests:
+
+```bash
+pytest
+```
+
+This will automatically include coverage reports due to the configuration in pyproject.toml.
+
+To see detailed coverage:
+
+Open `htmlcov/index.html` in your browser after running tests.
+
+### Coverage Configuration
+
+Coverage is configured via `.coveragerc` to focus on the `src/` directory, excluding tests and init files. Reports are generated in terminal (missing lines) and HTML format.

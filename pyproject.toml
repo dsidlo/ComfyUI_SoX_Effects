@@ -8,17 +8,19 @@ version = "0.1.3"
 description = "ComfyUI Nodes for SoX & TorchAudio.sox_effects"
 requires-python = ">=3.10"
 dependencies = [
-    "coverage>=7.13.3",
+    "importlib>=1.0.4",
     "numpy>=1.24.0",
     "pillow>=10.0.0",
     "pytest>=9.0.2",
     "soundfile>=0.13.1",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
+    "torchcodec>=0.10.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "coverage>=7.13.3",
     "bandit>=1.9.3",
     "pytest >=7.4.0",
     "hypothesis >=6.68.0",
@@ -31,4 +33,3 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-addopts = "--strict-markers --strict-config -v --cov=. --cov-report=term-missing --cov-report=html"

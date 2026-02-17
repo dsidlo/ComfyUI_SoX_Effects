@@ -191,20 +191,14 @@ def test_get_gnuplot_formulas():
             if result['yrange'] is not None:
                 assert isinstance(result['yrange'], str)
 
-    # Test final_net_response=True
-    results_net = cls.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, final_net_response=True)
-    assert len(results_net) == 3
-    net = results_net[2]
-    assert net['effect'] == 'net_response'
-    assert net['title'] == 'Combined Net Response'
-    assert isinstance(net['formula'], str)
-    assert len(net['formula']) > 10  # non-empty
-    assert ' * ' in net['formula']
+    # Test final_net_response=True in generate_combined_script
+    gnu_formulas = results  # from above
+    script_net = cls.generate_combined_script(gnu_formulas, output_fs=sample_rate, final_net_response=True)
+    assert '20*log10(H1(f)*H2(f))' in script_net or '20*log10(H1(f) * H2(f))' in script_net
+    assert 'Combined Net Response' in script_net
 
     # Test empty list
     assert cls.get_gnuplot_formulas([]) == []
-    assert cls.get_gnuplot_formulas([], final_net_response=True) == []
-    
     
     # Test with single effect
     single_effect = [{'effect': 'equalizer', 'args': ['1000', '1.0q', '6.0']}]
@@ -212,12 +206,10 @@ def test_get_gnuplot_formulas():
     assert len(single_result) == 1
     assert single_result[0]['effect'] == 'equalizer'
 
-    # Test single with final_net_response=True
-    single_net = cls.get_gnuplot_formulas(single_effect, final_net_response=True)
-    assert len(single_net) == 2
-    net_single = single_net[1]
-    assert net_single['effect'] == 'net_response'
-    assert net_single['formula'] == single_result[0]['formula']  # exact
+    # Test single with final_net_response=True in generate_combined_script
+    script_single_net = cls.generate_combined_script(single_result, output_fs=sample_rate, final_net_response=True)
+    assert single_result[0]['formula'] in script_single_net  # H1(f) same as net
+    assert 'Combined Net Response' in script_single_net
 
 
 def test_parse_gnuplot_script():
@@ -350,6 +342,25 @@ pause -1 'Hit return to continue'"""
     assert "20*log10(H2(f))" in combined_script
     assert "pause -1 'Hit return to continue'" in combined_script
 
+    # Test with final_net_response=True
+    combined_script_net = SoxApplyEffectsNode.generate_combined_script([parsed_hp, parsed_bass], output_fs=48000, final_net_response=True)
+    assert isinstance(combined_script_net, str)
+    assert len(combined_script_net) > 500
+    assert "# Combined SoX Effects Frequency Response" in combined_script_net
+    assert "set title 'Combined SoX Effects'" in combined_script_net
+    assert "Fs=48000" in combined_script_net
+    assert "o=2*pi/Fs" in combined_script_net
+    assert "H1(f)=" in combined_script_net
+    assert "H2(f)=" in combined_script_net
+    assert "b0_1=" in combined_script_net
+    assert "b0_2=" in combined_script_net
+    assert "plot [f=20:20000] [-60:30] \\" in combined_script_net
+    assert "20*log10(H1(f))" in combined_script_net
+    assert "20*log10(H2(f))" in combined_script_net
+    assert '20*log10(H1(f)*H2(f))' in combined_script_net or '20*log10(H1(f) * H2(f))' in combined_script_net
+    assert "Combined Net Response" in combined_script_net
+    assert "pause -1 'Hit return to continue'" in combined_script_net
+
     # Test empty list (graceful)
     empty_combined = SoxApplyEffectsNode.generate_combined_script([])
     assert "Combined SoX Effects" in empty_combined
@@ -360,129 +371,14 @@ pause -1 'Hit return to continue'"""
     assert "H1(f)=" in single_combined  # Still renames to _1
     assert "b0_1=" in single_combined
 
+    # Test single with final_net_response=True
+    single_combined_net = SoxApplyEffectsNode.generate_combined_script([parsed_hp], final_net_response=True)
+    assert "H1(f)=" in single_combined_net
+    assert "b0_1=" in single_combined_net
+    assert parsed_hp['formula'] in single_combined_net  # Same as net
+    assert "Combined Net Response" in single_combined_net
 
-def test_add_final_net_response():
-    """Test SoxApplyEffectsNode.add_final_net_response correctly appends net_response entry."""
-    cls = SoxApplyEffectsNode
 
-    # Case 1: Empty list
-    empty_list = []
-    result = cls.add_final_net_response(empty_list, fs=48000)
-    assert result == empty_list
-    assert len(result) == 0
-
-    # Case 2: List with no valid effects (e.g., compand without H/fs)
-    no_valid = [
-        {'effect': 'compand', 'data': 'something', 'title': 'Compand Effect'}
-    ]
-    original_len = len(no_valid)
-    result = cls.add_final_net_response(no_valid, fs=48000)
-    assert len(result) == original_len
-    assert result == no_valid  # Unchanged
-
-    # Case 3: Single valid effect
-    single_valid = [
-        {
-            'effect': 'lowpass',
-            'H': 'sqrt((b0*b0 + ...))',
-            'formula': '20*log10(H(f))',
-            'fs': 44100,
-            'x_label': 'Freq (Hz)',
-            'y_label': 'Gain (dB)',
-            'logscale': 'x',
-            'samples': 250,
-            'title': 'Lowpass Filter'
-        }
-    ]
-    result = cls.add_final_net_response(single_valid, fs=48000)
-    assert len(result) == 2
-    net_entry = result[1]
-    assert net_entry['effect'] == 'net_response'
-    assert net_entry['title'] == 'Combined Net Response'
-    assert net_entry['formula'] == '20*log10(H(f))'  # Same as single
-    assert net_entry['fs'] == 48000
-    assert net_entry['x_label'] == 'Freq (Hz)'
-    assert net_entry['y_label'] == 'Gain (dB)'
-    assert net_entry['logscale'] == 'x'
-    assert net_entry['samples'] == 250
-    assert net_entry['gnuplot_script'] is None
-    assert net_entry['data'] is None
-    assert net_entry['plot_curve'] is None
-
-    # Case 4: Multiple valid effects
-    multiple_valid = [
-        {
-            'effect': 'highpass',
-            'H': 'H1_formula',
-            'formula': '20*log10(H1(f))',
-            'fs': 48000,
-            'title': 'Highpass'
-        },
-        {
-            'effect': 'lowpass',
-            'H': 'H2_formula',
-            'formula': '20*log10(H2(f))',
-            'fs': 48000,
-            'title': 'Lowpass'
-        }
-    ]
-    result = cls.add_final_net_response(multiple_valid, fs=48000)
-    assert len(result) == 3
-    net_entry = result[2]
-    assert net_entry['effect'] == 'net_response'
-    assert net_entry['title'] == 'Combined Net Response'
-    assert net_entry['formula'] == '20*log10(H1(f)) * 20*log10(H2(f))'
-    assert net_entry['fs'] == 48000
-    # Uses first effect's metadata
-    assert net_entry['x_label'] == multiple_valid[0].get('x_label', 'Frequency (Hz)')
-    assert net_entry['y_label'] == multiple_valid[0].get('y_label', 'Gain (dB)')
-    assert net_entry['logscale'] == multiple_valid[0].get('logscale', 'x')
-    assert net_entry['samples'] == multiple_valid[0].get('samples', 500)
-
-    # Case 5: Mixed valid and invalid
-    mixed = [
-        {
-            'effect': 'compand',
-            'data': 'something',
-            'title': 'Compand (invalid)'
-        },
-        {
-            'effect': 'equalizer',
-            'H': 'Eq_formula',
-            'formula': '20*log10(Eq(f))',
-            'fs': 44100,
-            'title': 'Equalizer (valid)'
-        },
-        {
-            'effect': 'reverb',
-            'title': 'Reverb (invalid)'
-        },
-        {
-            'effect': 'bass',
-            'H': 'Bass_formula',
-            'formula': '20*log10(Bass(f))',
-            'fs': 44100,
-            'title': 'Bass (valid)'
-        }
-    ]
-    original_len = len(mixed)
-    result = cls.add_final_net_response(mixed, fs=48000)
-    assert len(result) == original_len + 1
-    net_entry = result[-1]
-    assert net_entry['effect'] == 'net_response'
-    assert net_entry['title'] == 'Combined Net Response'
-    # Product of valid formulas only (indices 1 and 3)
-    assert net_entry['formula'] == '20*log10(Eq(f)) * 20*log10(Bass(f))'
-    assert net_entry['fs'] == 48000
-    # Uses first valid's metadata (equalizer at index 1)
-    first_valid = mixed[1]
-    assert net_entry['x_label'] == first_valid.get('x_label', 'Frequency (Hz)')
-    assert net_entry['y_label'] == first_valid.get('y_label', 'Gain (dB)')
-    assert net_entry['logscale'] == first_valid.get('logscale', 'x')
-    assert net_entry['samples'] == first_valid.get('samples', 500)
-    assert net_entry['gnuplot_script'] is None
-    assert net_entry['data'] is None
-    assert net_entry['plot_curve'] is None
 
 
 def test_sox_apply_effects_plot(mock_audio, monkeypatch):
@@ -518,12 +414,13 @@ def test_sox_apply_effects_plot(mock_audio, monkeypatch):
             kwargs[name] = spec.get('default', 1)
         elif type_ == 'SOX_PARAMS':
             # Provide plottable params for testing plot
-            kwargs[name] = {"sox_params": ['vol', '0.5']}
+            kwargs[name] = {"sox_params": ['highpass', '-2', '1000', 'bass', '12.0', '100.0']}
         else:
             kwargs[name] = spec.get('default', None)
     
     # Override for plotting
     kwargs['enable_sox_plot'] = True
+    kwargs['final_net_response'] = False
     
     node = cls()
     
@@ -577,3 +474,26 @@ def test_sox_apply_effects_plot(mock_audio, monkeypatch):
     # dbg_text should contain both apply and plot info
     assert 'SoX cmd executed' in dbg_text  # From apply
     assert 'SoX Plot cmd' in dbg_text  # From plot
+
+    # Case 3: with final_net_response=True (verify net in script)
+    kwargs['final_net_response'] = True
+    outputs_net = node.apply_effects(**kwargs)
+    assert outputs_net is not None
+    assert len(outputs_net) == 3
+    processed_audio_net, sox_plot_image_net, dbg_text_net = outputs_net
+
+    # Audio same as case 2 (plot independent)
+    assert torch.equal(processed_audio_net['waveform'], processed_audio['waveform'])
+
+    # sox_plot_image valid
+    assert isinstance(sox_plot_image_net, torch.Tensor)
+    assert sox_plot_image_net.shape[0] == 1
+    assert sox_plot_image_net.shape[3] == 3
+    assert sox_plot_image_net.dtype == torch.float32
+    assert sox_plot_image_net.min() >= 0
+    assert sox_plot_image_net.max() <= 1
+    assert not torch.all(sox_plot_image_net == 0)
+
+    # dbg_text should contain net response in script
+    assert 'Combined Net Response' in dbg_text_net
+    assert '20*log10(H1(f)*H2(f))' in dbg_text_net or '20*log10(H1(f) * H2(f))' in dbg_text_net

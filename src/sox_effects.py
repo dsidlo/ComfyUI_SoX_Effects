@@ -6,7 +6,9 @@ import torch
 import torchaudio
 import numpy as np
 import re
+from typing import Optional
 import shutil
+from typing import Optional
 
 from PIL import Image
 # Check if the program is being run by bytest
@@ -403,7 +405,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         return plottable_effects
 
     @staticmethod
-    def get_gnuplot_formulas(plottable_effects, sample_rate=44100):
+    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None):
         """
         Generate gnuplot formulas for each plottable effect by running SoX --plot.
         
@@ -425,38 +427,31 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             - 'step': step size or None (extracted from xrange/samples)
         """
         results = []
-        
-        # Handle case where torchcodec is not available
-        try:
-            # Create dummy audio file for SoX --plot
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                # Create silent 1-second audio
-                dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
-                torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
-                input_path = temp_input.name
-        except ImportError as e:
-            # If torchcodec is not available, return error for all effects
-            for effect_info in plottable_effects:
-                results.append({
-                    'effect': effect_info['effect'],
-                    'args': effect_info['args'],
-                    'gnuplot_formula': '',
-                    'xrange': None,
-                    'yrange': None,
-                    'step': None,
-                    'error': f"Audio file creation failed: {str(e)}"
-                })
-            return results
-        
+
+        input_path = None
+        synthetic_created = False
+        if wave_file and os.path.exists(wave_file):
+            input_path = wave_file
+        else:
+            try:
+                # Create dummy audio file for SoX --plot
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+                    # Create silent 1-second audio
+                    dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
+                    torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
+                    input_path = temp_input.name
+                synthetic_created = True
+            except Exception as e:
+                raise RuntimeError(f"Failed to create synthetic input for plotting: {str(e)}")
+
         output_path = tempfile.mktemp(suffix='.wav')
-        
-        try:
-            for effect_info in plottable_effects:
+        cmd_base = ['sox', '--plot', 'gnuplot', input_path, output_path]
+        for effect_info in plottable_effects:
                 effect_name = effect_info['effect']
                 args = effect_info['args']
                 
                 # Build SoX command with just this effect
-                plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path, effect_name] + args
+                plot_cmd = cmd_base + [effect_name] + args
                 
                 try:
                     result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
@@ -484,13 +479,15 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         'step': None,
                         'error': str(e)
                     })
-        finally:
-            # Cleanup temp files
-            if os.path.exists(input_path):
+        if synthetic_created:
+            try:
                 os.remove(input_path)
-            if os.path.exists(output_path):
-                os.remove(output_path)
-        
+            except OSError:
+                pass
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
         return results
 
     @staticmethod

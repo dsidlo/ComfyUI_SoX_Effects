@@ -10,7 +10,7 @@ import torchaudio
 import tempfile
 import os
 import numpy as np
-from src.sox_effects import NODE_CLASS_MAPPINGS as effects_mappings, generate_combined_script
+from src.sox_effects import NODE_CLASS_MAPPINGS as effects_mappings, generate_combined_script, SoxApplyEffectsNode
 from src.sox_voices import NODE_CLASS_MAPPINGS as voices_mappings
 from src.sox_utils import NODE_CLASS_MAPPINGS as utils_mappings
 
@@ -361,6 +361,130 @@ pause -1 'Hit return to continue'"""
     single_combined = generate_combined_script([parsed_hp])
     assert "H1(f)=" in single_combined  # Still renames to _1
     assert "b0_1=" in single_combined
+
+
+def test_add_final_net_response():
+    """Test SoxApplyEffectsNode.add_final_net_response correctly appends net_response entry."""
+    cls = SoxApplyEffectsNode
+
+    # Case 1: Empty list
+    empty_list = []
+    result = cls.add_final_net_response(empty_list, fs=48000)
+    assert result == empty_list
+    assert len(result) == 0
+
+    # Case 2: List with no valid effects (e.g., compand without H/fs)
+    no_valid = [
+        {'effect': 'compand', 'data': 'something', 'title': 'Compand Effect'}
+    ]
+    original_len = len(no_valid)
+    result = cls.add_final_net_response(no_valid, fs=48000)
+    assert len(result) == original_len
+    assert result == no_valid  # Unchanged
+
+    # Case 3: Single valid effect
+    single_valid = [
+        {
+            'effect': 'lowpass',
+            'H': 'sqrt((b0*b0 + ...))',
+            'formula': '20*log10(H(f))',
+            'fs': 44100,
+            'x_label': 'Freq (Hz)',
+            'y_label': 'Gain (dB)',
+            'logscale': 'x',
+            'samples': 250,
+            'title': 'Lowpass Filter'
+        }
+    ]
+    result = cls.add_final_net_response(single_valid, fs=48000)
+    assert len(result) == 2
+    net_entry = result[1]
+    assert net_entry['effect'] == 'net_response'
+    assert net_entry['title'] == 'Combined Net Response'
+    assert net_entry['formula'] == '20*log10(H(f))'  # Same as single
+    assert net_entry['fs'] == 48000
+    assert net_entry['x_label'] == 'Freq (Hz)'
+    assert net_entry['y_label'] == 'Gain (dB)'
+    assert net_entry['logscale'] == 'x'
+    assert net_entry['samples'] == 250
+    assert net_entry['gnuplot_script'] is None
+    assert net_entry['data'] is None
+    assert net_entry['plot_curve'] is None
+
+    # Case 4: Multiple valid effects
+    multiple_valid = [
+        {
+            'effect': 'highpass',
+            'H': 'H1_formula',
+            'formula': '20*log10(H1(f))',
+            'fs': 48000,
+            'title': 'Highpass'
+        },
+        {
+            'effect': 'lowpass',
+            'H': 'H2_formula',
+            'formula': '20*log10(H2(f))',
+            'fs': 48000,
+            'title': 'Lowpass'
+        }
+    ]
+    result = cls.add_final_net_response(multiple_valid, fs=48000)
+    assert len(result) == 3
+    net_entry = result[2]
+    assert net_entry['effect'] == 'net_response'
+    assert net_entry['title'] == 'Combined Net Response'
+    assert net_entry['formula'] == '20*log10(H1(f)) * 20*log10(H2(f))'
+    assert net_entry['fs'] == 48000
+    # Uses first effect's metadata
+    assert net_entry['x_label'] == multiple_valid[0].get('x_label', 'Frequency (Hz)')
+    assert net_entry['y_label'] == multiple_valid[0].get('y_label', 'Gain (dB)')
+    assert net_entry['logscale'] == multiple_valid[0].get('logscale', 'x')
+    assert net_entry['samples'] == multiple_valid[0].get('samples', 500)
+
+    # Case 5: Mixed valid and invalid
+    mixed = [
+        {
+            'effect': 'compand',
+            'data': 'something',
+            'title': 'Compand (invalid)'
+        },
+        {
+            'effect': 'equalizer',
+            'H': 'Eq_formula',
+            'formula': '20*log10(Eq(f))',
+            'fs': 44100,
+            'title': 'Equalizer (valid)'
+        },
+        {
+            'effect': 'reverb',
+            'title': 'Reverb (invalid)'
+        },
+        {
+            'effect': 'bass',
+            'H': 'Bass_formula',
+            'formula': '20*log10(Bass(f))',
+            'fs': 44100,
+            'title': 'Bass (valid)'
+        }
+    ]
+    original_len = len(mixed)
+    result = cls.add_final_net_response(mixed, fs=48000)
+    assert len(result) == original_len + 1
+    net_entry = result[-1]
+    assert net_entry['effect'] == 'net_response'
+    assert net_entry['title'] == 'Combined Net Response'
+    # Product of valid formulas only (indices 1 and 3)
+    assert net_entry['formula'] == '20*log10(Eq(f)) * 20*log10(Bass(f))'
+    assert net_entry['fs'] == 48000
+    # Uses first valid's metadata (equalizer at index 1)
+    first_valid = mixed[1]
+    assert net_entry['x_label'] == first_valid.get('x_label', 'Frequency (Hz)')
+    assert net_entry['y_label'] == first_valid.get('y_label', 'Gain (dB)')
+    assert net_entry['logscale'] == first_valid.get('logscale', 'x')
+    assert net_entry['samples'] == first_valid.get('samples', 500)
+    assert net_entry['gnuplot_script'] is None
+    assert net_entry['data'] is None
+    assert net_entry['plot_curve'] is None
 
 
 def test_sox_apply_effects_plot(mock_audio, monkeypatch):

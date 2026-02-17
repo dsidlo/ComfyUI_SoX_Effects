@@ -135,8 +135,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if not sox_cmd_params:
                 plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
-                plottable_effects = get_plottable_effects(params)
-                gnu_formulas = get_gnuplot_formulas(plottable_effects)
+                plottable_effects = self.get_plottable_effects(sox_cmd_params)
+                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate)
                 gnu_plot_script = generate_combined_script(gnu_formulas)
                 # Run SoX --plot gnuplot input.wav output.wav [effects] to generate script (with temp files)
                 plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params

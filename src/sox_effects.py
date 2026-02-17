@@ -668,10 +668,16 @@ def add_final_net_response(effects_list, fs=48000):
     # Use the first effect's metadata as base, or defaults
     first = filter_effects[0]
 
+    if len(filter_effects) == 1:
+        net_formula = filter_effects[0]['formula']
+    else:
+        product_terms = [eff['formula'] for eff in filter_effects]
+        net_formula = " * ".join(product_terms)
+
     net_entry = {
         'effect': 'net_response',
         'title': 'Combined Net Response',
-        'formula': '20*log10(product of individual H_i(f))',
+        'formula': net_formula,
         'gnuplot_script': None,           # synthetic
         'x_label':      first.get('x_label', 'Frequency (Hz)'),
         'y_label':      first.get('y_label', 'Gain (dB)'),

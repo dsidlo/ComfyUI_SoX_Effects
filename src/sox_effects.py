@@ -456,7 +456,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 
                 try:
                     result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
-                    gnuplot_script = result.stdout
+                    gnuplot_script = generate_combined_script(gnu_formulas, output_fs=sample_rate)
                     
                     # Parse the gnuplot script
                     formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
@@ -625,7 +625,7 @@ def generate_combined_script (formula_data_list, output_fs=48000,
     script_parts.append(", \\\n".join(plot_expressions))
 
     # Optional: Interactive pause or output to file
-    script_parts.append("pause -1 'Hit return to continue'")
+    # script_parts.append("pause -1 'Hit return to continue'")
     # Or for PNG: uncomment below
     # script_parts.append("set term png size 800,600")
     # script_parts.append("set output 'combined.png'")
@@ -644,13 +644,18 @@ def add_final_net_response(plottable_effects, fs=48000):
 
     if not filter_effects:
         print("No frequency-response effects found → cannot create net response")
-        return
+        return plottable_effects
 
     # Build the combined H expression
-    combined_h = " * ".join(
-        f"abs({d['H']})"   # take right side of H(f)=...
-        for d in filter_effects
-    )
+    if len(filter_effects) == 1:
+        combined_h = filter_effects[0]['H']
+        net_formula = filter_effects[0]['formula']
+    else:
+        combined_h = " * ".join(
+            f"abs({d['H']})"   # take right side of H(f)=...
+            for d in filter_effects
+        )
+        net_formula = " * ".join(f"abs({d['H']})" for d in filter_effects)
 
     # For dB plot we actually want the product inside 20*log10()
     plot_expr = f"20*log10({combined_h})" if combined_h else None
@@ -661,7 +666,7 @@ def add_final_net_response(plottable_effects, fs=48000):
     net_entry = {
         'effect': 'net_response',
         'title': 'Combined Net Response',
-        'formula': filter_effects[0]['formula'] if len(filter_effects)==1 else " * ".join(f"abs({d['H']})" for d in filter_effects),
+        'formula': net_formula,
         'gnuplot_script': None,           # synthetic
         'x_label':      first.get('x_label', 'Frequency (Hz)'),
         'y_label':      first.get('y_label', 'Gain (dB)'),

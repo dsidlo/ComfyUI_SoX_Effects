@@ -396,7 +396,7 @@ def test_sox_apply_effects_plot(mock_audio, monkeypatch):
             kwargs[name] = spec.get('default', 1)
         elif type_ == 'SOX_PARAMS':
             # Provide plottable params for testing plot
-            kwargs[name] = {"sox_params": ['highpass', '1000']}
+            kwargs[name] = {"sox_params": ['vol', '0.5']}
         else:
             kwargs[name] = spec.get('default', None)
     

@@ -513,52 +513,66 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             'fs': None,
             'H': None,
             'coeffs': None,
-            'data': None
+            'data': None,
+            'xrange': None,
+            'yrange': None,
+            'step': None,
+            'formula': ''
         }
 
-        f_match = re.match(r'(?m)^\s*(?!#)(?!set\b)(?!plot\b)(?!pause\b).*?$')
-        if not f_match:
-            formula = 'regexp match failed for gnuplot script formulas'
-        else:
-            formula = f_match.group(2)
+        # title
+        match = re.search(r"set title '([^']+)'", script)
+        if match:
+            formula_data['title'] = match.group(1)
 
-        title = re.search(r"set title '([^']+)'", content).group(1)
-        if title:
-            formula.title = title
-        x_label = re.search(r"set xlabel '([^']+)'", content).group(1)
-        if x_label:
-            formula.x_label = x_label
-        y_label = re.search(r"set ylabel '([^']+)'",content).group(1)
-        if y_label:
-            formula.y_label = y_label
-        logscale = re.search(r"set logscale (x)", content).group(1)
-        if logscale:
-            formula.logscale = logscale
-        samples = re.search(r"set samples ([\d.]+)", content).group(1)
-        if samples:
-            formula.samples = samples
-        plot_curve = re.search(r"plot '([^']+)'", content).group(1)
-        if plot_curve:
-            formula.plot_curve = plot_curve
-        # Get the Sample_Rate and Niquist
-        fs = float(re.search(r"Fs=(\d+)", content).group(1))
-        if fs:
-            formula.fs = fs
-        # For H(f) effects:
-        # - This is the transfer function.
-        # - How the filter transforms the input frequency f.
-        h_def = re.search(r"H\(f\)=(.*?)\n", content, re.DOTALL).group(1).strip()
-        if h_def:
-            formula.H = h_def
-        # Get the Coefficients & Angular Frequency
-        coeffs = re.fetchall(r"(^[a-z]\d?=.*)\n", content).group(1)
-        if coeffs:
-            formula.coeffs = coeffs
-        # Get the Data
-        # After 'plot -'
-        data = re.findall(r"(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\s+(-?\d+\.?\d*(?:[eE][+-]?\d+)?)", content)
-        if data:
-            formula.data = data
+        # x_label
+        match = re.search(r"set xlabel '([^']+)'", script)
+        if match:
+            formula_data['x_label'] = match.group(1)
+
+        # y_label
+        match = re.search(r"set ylabel '([^']+)'", script)
+        if match:
+            formula_data['y_label'] = match.group(1)
+
+        # logscale
+        match = re.search(r"set logscale (x)", script)
+        if match:
+            formula_data['logscale'] = match.group(1)
+
+        # samples
+        match = re.search(r"set samples (\d+)", script)
+        if match:
+            formula_data['samples'] = match.group(1)
+
+        # fs
+        match = re.search(r"Fs=(\d+)", script)
+        if match:
+            formula_data['fs'] = float(match.group(1))
+
+        # H
+        match = re.search(r'H\(f\)=(.*?)(?=\nset logscale|\nplot|$)', script, re.DOTALL)
+        if match:
+            formula_data['H'] = match.group(1).strip()
+            formula_data['formula'] = formula_data['H']
+
+        # coeffs
+        matches = re.findall(r'([ab][012]=[^;]+)', script)
+        if matches:
+            formula_data['coeffs'] = '; '.join(matches)
+
+        # xrange
+        match = re.search(r'plot \[(f=[^:]+):Fs/2\]', script)
+        if match:
+            formula_data['xrange'] = match.group(1)
+
+        # yrange
+        match = re.search(r'\[([^\]]+)\] 20\*log10', script)
+        if match:
+            formula_data['yrange'] = match.group(1)
+
+        # data
+        formula_data['data'] = None
 
         return formula_data
 

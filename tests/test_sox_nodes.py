@@ -152,7 +152,7 @@ def test_get_gnuplot_formulas():
     # Generate a test WAV file with tone
     duration = 1.0
     t = torch.linspace(0, duration, int(sample_rate * duration), dtype=torch.float32)
-    test_audio = (torch.sin(2 * np.pi * 440 * t) + 0.5 * torch.sin(2 * np.pi * 880 * t)).unsqueeze(0).unsqueeze(0)
+    test_audio = (torch.sin(2 * np.pi * 440 * t) + 0.5 * torch.sin(2 * np.pi * 880 * t)).unsqueeze(0)
     
     test_wav_path = None
     try:

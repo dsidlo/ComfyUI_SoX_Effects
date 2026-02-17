@@ -256,7 +256,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 except subprocess.CalledProcessError as e:
                     raise RuntimeError(f"\n*** SoX Exception ***: {e.stderr}\n--- sox_debug ---\n{sox_dbg}\n--- soxdbgend ---\n\n")
                 sox_dbg += f"\n - sox effects successfully applied to audio.\n"
-                sox_dbg += f"\n - sox cmd executed: {shlex.join(cmd)}\n"
+                sox_dbg += f"\nSoX cmd executed: {shlex.join(cmd)}\n"
             else:
                 sox_dbg += f"\n*** SoxApplyEffectsNode NOT Enabled ***: Audio Effects not applied.\n"
 

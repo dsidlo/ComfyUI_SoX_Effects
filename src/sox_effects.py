@@ -472,8 +472,8 @@ plot [10:22050] sin(x)
             - 'yrange': y-axis limits [min, max] or None  
             - 'step': step size or None (extracted from xrange/samples)
         """
+        results = []
         if os.environ.get('TEST_MODE') == '1':
-            results = []
             for effect_info in plottable_effects:
                 formula_data = {
                     'effect': effect_info['effect'],
@@ -494,61 +494,59 @@ plot [10:22050] sin(x)
                     'data': None,
                 }
                 results.append(formula_data)
-            return results
-
-        results = []
-        output_path = tempfile.mktemp(suffix='.wav')
-
-        input_path = None
-        synthetic_created = False
-        if wave_file and os.path.exists(wave_file):
-            input_path = wave_file
         else:
-            try:
-                # Create dummy audio file for SoX --plot
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                    # Create silent 1-second audio
-                    dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
-                    torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
-                    input_path = temp_input.name
-                synthetic_created = True
-            except Exception as e:
-                raise RuntimeError(f"Failed to create synthetic input for plotting: {str(e)}")
+            output_path = tempfile.mktemp(suffix='.wav')
 
-        cmd_base = ['sox', '--plot', 'gnuplot', input_path, output_path]
-        for effect_info in plottable_effects:
-                effect_name = effect_info['effect']
-                args = effect_info['args']
-                
-                # Build SoX command with just this effect
-                plot_cmd = cmd_base + [effect_name] + args
-                
+            input_path = None
+            synthetic_created = False
+            if wave_file and os.path.exists(wave_file):
+                input_path = wave_file
+            else:
                 try:
-                    result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
-                    gnuplot_script = result.stdout
-                    
-                    # Parse the gnuplot script
-                    formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
-                    formula_data['effect'] = effect_name
-                    formula_data['args'] = args
-                    results.append(formula_data)
+                    # Create dummy audio file for SoX --plot
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
+                        # Create silent 1-second audio
+                        dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
+                        torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
+                        input_path = temp_input.name
+                    synthetic_created = True
                 except Exception as e:
-                    # If SoX fails for this effect, still include it with error info
-                    formula_data = SoxApplyEffectsNode._parse_gnuplot_script('')
-                    formula_data['effect'] = effect_name
-                    formula_data['args'] = args
-                    formula_data['error'] = str(e)
-                    results.append(formula_data)
+                    raise RuntimeError(f"Failed to create synthetic input for plotting: {str(e)}")
 
-        if synthetic_created:
+            cmd_base = ['sox', '--plot', 'gnuplot', input_path, output_path]
+            for effect_info in plottable_effects:
+                    effect_name = effect_info['effect']
+                    args = effect_info['args']
+                    
+                    # Build SoX command with just this effect
+                    plot_cmd = cmd_base + [effect_name] + args
+                    
+                    try:
+                        result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
+                        gnuplot_script = result.stdout
+                        
+                        # Parse the gnuplot script
+                        formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
+                        formula_data['effect'] = effect_name
+                        formula_data['args'] = args
+                        results.append(formula_data)
+                    except Exception as e:
+                        # If SoX fails for this effect, still include it with error info
+                        formula_data = SoxApplyEffectsNode._parse_gnuplot_script('')
+                        formula_data['effect'] = effect_name
+                        formula_data['args'] = args
+                        formula_data['error'] = str(e)
+                        results.append(formula_data)
+
+            if synthetic_created:
+                try:
+                    os.remove(input_path)
+                except OSError:
+                    pass
             try:
-                os.remove(input_path)
+                os.remove(output_path)
             except OSError:
                 pass
-        try:
-            os.remove(output_path)
-        except OSError:
-            pass
 
         if final_net_response:
             filter_effects = [d for d in results if 'error' not in d and d.get('formula')]

@@ -18,7 +18,7 @@ NODE_CLASS_MAPPINGS = {**effects_mappings, **voices_mappings, **utils_mappings}
 
 node_names = [
     name for name, cls in NODE_CLASS_MAPPINGS.items()
-    if hasattr(cls, 'INPUT_TYPES') and hasattr(cls, 'process')
+    if hasattr(cls, 'INPUT_TYPES') and (hasattr(cls, 'process') or hasattr(cls, 'FUNCTION'))
 ]
 
 @pytest.fixture
@@ -57,8 +57,9 @@ def test_load_all_nodes():
     for name in node_names:
         cls = NODE_CLASS_MAPPINGS[name]
         assert hasattr(cls, 'INPUT_TYPES')
-        assert hasattr(cls, 'process')
-        assert callable(cls.process)
+        func_name = cls.FUNCTION if hasattr(cls, 'FUNCTION') else 'process'
+        assert hasattr(cls, func_name)
+        assert callable(getattr(cls, func_name))
 
 @pytest.mark.parametrize("node_name", node_names)
 def test_process_defaults(node_name, mock_audio):
@@ -90,8 +91,10 @@ def test_process_defaults(node_name, mock_audio):
         else:
             kwargs[name] = spec.get('default', None)
     node = cls()
+    func_name = cls.FUNCTION if hasattr(cls, 'FUNCTION') else 'process'
+    method = getattr(node, func_name)
     try:
-        outputs = node.process(**kwargs)
+        outputs = method(**kwargs)
         assert outputs is not None
         if isinstance(outputs, dict):
             for key, value in outputs.items():
@@ -146,6 +149,9 @@ def test_get_gnuplot_formulas():
     Test that get_gnuplot_formulas correctly generates gnuplot formulas
     for plottable effects.
     """
+    import os
+    os.environ['TEST_MODE'] = '1'
+
     cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
     
     sample_rate = 44100

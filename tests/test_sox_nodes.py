@@ -10,7 +10,7 @@ import torchaudio
 import tempfile
 import os
 import numpy as np
-from src.sox_effects import NODE_CLASS_MAPPINGS as effects_mappings
+from src.sox_effects import NODE_CLASS_MAPPINGS as effects_mappings, generate_combined_script
 from src.sox_voices import NODE_CLASS_MAPPINGS as voices_mappings
 from src.sox_utils import NODE_CLASS_MAPPINGS as utils_mappings
 
@@ -203,3 +203,146 @@ def test_get_gnuplot_formulas():
     single_result = cls.get_gnuplot_formulas(single_effect)
     assert len(single_result) == 1
     assert single_result[0]['effect'] == 'equalizer'
+
+
+def test_parse_gnuplot_script():
+    """Test _parse_gnuplot_script parses real SoX --plot output correctly."""
+    cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
+
+    highpass_script = """# gnuplot file
+set title 'SoX effect: highpass gain=0 frequency=1000 band-width(Hz)=0 (rate=48000)'
+set xlabel 'Frequency (Hz)'
+set ylabel 'Amplitude Response (dB)'
+Fs=48000
+b0=9.386528845491728e-01; b1=-9.386528845491728e-01; b2=0.000000000000000e+00; a1=-8.773057690983457e-01; a2=0.000000000000000e+00
+o=2*pi/Fs
+H(f)=sqrt((b0*b0+b1*b1+b2*b2+2.*(b0*b1+b1*b2)*cos(f*o)+2.*(b0*b2)*cos(2.*f*o))/(1.+a1*a1+a2*a2+2.*(a1+a1*a2)*cos(f*o)+2.*a2*cos(2.*f*o)))
+set logscale x
+set samples 250
+set grid xtics ytics
+set key off
+plot [f=10:Fs/2] [-35:25] 20*log10(H(f))
+pause -1 'Hit return to continue'"""
+
+    bass_script = """# gnuplot file
+set title 'SoX effect: bass gain=12 frequency=100 slope=0.5 (rate=48000)'
+set xlabel 'Frequency (Hz)'
+set ylabel 'Amplitude Response (dB)'
+Fs=48000
+b0=1.009746865436002e+00; b1=-1.980329035605072e+00; b2=9.709207289998719e-01; a1=-1.980455793953805e+00; a2=9.805408360871408e-01
+o=2*pi/Fs
+H(f)=sqrt((b0*b0+b1*b1+b2*b2+2.*(b0*b1+b1*b2)*cos(f*o)+2.*(b0*b2)*cos(2.*f*o))/(1.+a1*a1+a2*a2+2.*(a1+a1*a2)*cos(f*o)+2.*a2*cos(2.*f*o)))
+set logscale x
+set samples 250
+set grid xtics ytics
+set key off
+plot [f=10:Fs/2] [-35:25] 20*log10(H(f))
+pause -1 'Hit return to continue'"""
+
+    # Test highpass
+    parsed_hp = cls._parse_gnuplot_script(highpass_script)
+    assert isinstance(parsed_hp, dict)
+    assert 'gnuplot_script' in parsed_hp
+    assert 'title' in parsed_hp
+    assert parsed_hp['title'] == "SoX effect: highpass gain=0 frequency=1000 band-width(Hz)=0 (rate=48000)"
+    assert 'x_label' in parsed_hp
+    assert parsed_hp['x_label'] == 'Frequency (Hz)'
+    assert 'y_label' in parsed_hp
+    assert parsed_hp['y_label'] == 'Amplitude Response (dB)'
+    assert 'logscale' in parsed_hp
+    assert parsed_hp['logscale'] == 'x'
+    assert 'samples' in parsed_hp
+    assert parsed_hp['samples'] == '250'
+    assert 'fs' in parsed_hp
+    assert parsed_hp['fs'] == 48000.0
+    assert 'H' in parsed_hp
+    assert 'coeffs' in parsed_hp
+    assert len(parsed_hp['gnuplot_script']) > 100
+
+    # Test bass
+    parsed_bass = cls._parse_gnuplot_script(bass_script)
+    assert isinstance(parsed_bass, dict)
+    assert 'gnuplot_script' in parsed_bass
+    assert 'title' in parsed_bass
+    assert parsed_bass['title'] == "SoX effect: bass gain=12 frequency=100 slope=0.5 (rate=48000)"
+    assert 'x_label' in parsed_bass
+    assert parsed_bass['x_label'] == 'Frequency (Hz)'
+    assert 'y_label' in parsed_bass
+    assert parsed_bass['y_label'] == 'Amplitude Response (dB)'
+    assert 'logscale' in parsed_bass
+    assert parsed_bass['logscale'] == 'x'
+    assert 'samples' in parsed_bass
+    assert parsed_bass['samples'] == '250'
+    assert 'fs' in parsed_bass
+    assert parsed_bass['fs'] == 48000.0
+    assert 'H' in parsed_bass
+    assert 'coeffs' in parsed_bass
+    assert len(parsed_bass['gnuplot_script']) > 100
+
+
+def test_generate_combined_script():
+    """Test generate_combined_script produces valid combined plot script."""
+    from src.sox_effects import generate_combined_script
+
+    cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
+
+    highpass_script = """# gnuplot file
+set title 'SoX effect: highpass gain=0 frequency=1000 band-width(Hz)=0 (rate=48000)'
+set xlabel 'Frequency (Hz)'
+set ylabel 'Amplitude Response (dB)'
+Fs=48000
+b0=9.386528845491728e-01; b1=-9.386528845491728e-01; b2=0.000000000000000e+00; a1=-8.773057690983457e-01; a2=0.000000000000000e+00
+o=2*pi/Fs
+H(f)=sqrt((b0*b0+b1*b1+b2*b2+2.*(b0*b1+b1*b2)*cos(f*o)+2.*(b0*b2)*cos(2.*f*o))/(1.+a1*a1+a2*a2+2.*(a1+a1*a2)*cos(f*o)+2.*a2*cos(2.*f*o)))
+set logscale x
+set samples 250
+set grid xtics ytics
+set key off
+plot [f=10:Fs/2] [-35:25] 20*log10(H(f))
+pause -1 'Hit return to continue'"""
+
+    bass_script = """# gnuplot file
+set title 'SoX effect: bass gain=12 frequency=100 slope=0.5 (rate=48000)'
+set xlabel 'Frequency (Hz)'
+set ylabel 'Amplitude Response (dB)'
+Fs=48000
+b0=1.009746865436002e+00; b1=-1.980329035605072e+00; b2=9.709207289998719e-01; a1=-1.980455793953805e+00; a2=9.805408360871408e-01
+o=2*pi/Fs
+H(f)=sqrt((b0*b0+b1*b1+b2*b2+2.*(b0*b1+b1*b2)*cos(f*o)+2.*(b0*b2)*cos(2.*f*o))/(1.+a1*a1+a2*a2+2.*(a1+a1*a2)*cos(f*o)+2.*a2*cos(2.*f*o)))
+set logscale x
+set samples 250
+set grid xtics ytics
+set key off
+plot [f=10:Fs/2] [-35:25] 20*log10(H(f))
+pause -1 'Hit return to continue'"""
+
+    # Parse both scripts
+    parsed_hp = cls._parse_gnuplot_script(highpass_script)
+    parsed_bass = cls._parse_gnuplot_script(bass_script)
+
+    # Test with both (expect renamed H1/H2)
+    combined_script = generate_combined_script([parsed_hp, parsed_bass], output_fs=48000)
+    assert isinstance(combined_script, str)
+    assert len(combined_script) > 500
+    assert "# Combined SoX Effects Frequency Response" in combined_script
+    assert "set title 'Combined SoX Effects'" in combined_script
+    assert "Fs=48000" in combined_script
+    assert "o=2*pi/Fs" in combined_script
+    assert "H1(f)=" in combined_script
+    assert "H2(f)=" in combined_script
+    assert "b0_1=" in combined_script
+    assert "b0_2=" in combined_script
+    assert "plot [f=20:20000] [-60:30] \\" in combined_script
+    assert "20*log10(H1(f))" in combined_script
+    assert "20*log10(H2(f))" in combined_script
+    assert "pause -1 'Hit return to continue'" in combined_script
+
+    # Test empty list (graceful)
+    empty_combined = generate_combined_script([])
+    assert "Combined SoX Effects" in empty_combined
+    assert "plot" in empty_combined  # Still has plot command, empty
+
+    # Test single (no rename)
+    single_combined = generate_combined_script([parsed_hp])
+    assert "H1(f)=" in single_combined  # Still renames to _1
+    assert "b0_1=" in single_combined

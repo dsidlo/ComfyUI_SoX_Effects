@@ -117,7 +117,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
 
         # Handle plotting if enabled (no audio processing; diagnostic only)
-        sox_plot_image = torch.zeros((1, 400, 800, 3), dtype=torch.uint8)  # Blank default
+        sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)  # Blank default
         plot_dbg = ""
         plot_script_path = None
         png_path = None
@@ -214,7 +214,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         plot_dbg += f"-- Sox Plot: Opening Rendered Image ({temp_png_file.name})..."
                         pil_img = Image.open(temp_png_file.name).convert("RGB")
                         img_array = np.array(pil_img)
-                        sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
+                        sox_plot_image = (torch.from_numpy(img_array).float() / 255.0).unsqueeze(0)
                         plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
                         plot_dbg += "==> ...Rendered Image is good."
                     else:
@@ -699,7 +699,7 @@ def add_final_net_response(plottable_effects, fs=48000):
     }
 
     plottable_effects.append(net_entry)
-    return net_entry
+    return plottable_effects
 
 
 class SoxAllpassNode:

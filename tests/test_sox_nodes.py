@@ -1,16 +1,30 @@
 import pytest
 import importlib
+import subprocess
+import tempfile
+import os
 from pathlib import Path
-import pytest
 
 project_root = Path(__file__).parent.parent.resolve()
 import sys
+import torch
+import torchaudio
+import tempfile
+import os
+import numpy as np
 sys.path.insert(0, str(project_root))
 
+@pytest.fixture
+def mock_audio():
+    return {
+        "waveform": torch.zeros((1, 1, 1024)),
+        "sample_rate": 22050
+    }
+
 node_list = [
-    'sox_effects',
-    'sox_voices',
-    'sox_utils',
+    'src.sox_effects',
+    'src.sox_voices',
+    'src.sox_utils',
 ]
 
 NODE_CLASS_MAPPINGS = {}
@@ -139,13 +153,24 @@ def test_get_gnuplot_formulas():
     """
     cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
     
-    # Test with known plottable effects
-    plottable_effects = [
-        {'effect': 'highpass', 'args': ['-2', '1000', '0.707q']},
-        {'effect': 'bass', 'args': ['12.0', '100.0']}
-    ]
+    sample_rate = 44100
+    # Generate a test WAV file with tone
+    duration = 1.0
+    t = torch.linspace(0, duration, int(sample_rate * duration), dtype=torch.float32)
+    test_audio = (torch.sin(2 * np.pi * 440 * t) + 0.5 * torch.sin(2 * np.pi * 880 * t)).unsqueeze(0).unsqueeze(0)
     
-    results = cls.get_gnuplot_formulas(plottable_effects, sample_rate=44100)
+    test_wav_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            test_wav_path = f.name
+            torchaudio.save(test_wav_path, test_audio, sample_rate)
+        
+        plottable_effects = [
+            {'effect': 'highpass', 'args': ['-2', '1000', '0.707q']},
+            {'effect': 'bass', 'args': ['12.0', '100.0']}
+        ]
+        
+        results = cls.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=test_wav_path)
     
     # Should return results for all effects
     assert len(results) == 2
@@ -171,8 +196,12 @@ def test_get_gnuplot_formulas():
                 assert isinstance(result['xrange'], list)
                 assert len(result['xrange']) == 2
     
-    # Test empty list
-    assert cls.get_gnuplot_formulas([]) == []
+        # Test empty list
+        assert cls.get_gnuplot_formulas([]) == []
+    
+    finally:
+        if test_wav_path and os.path.exists(test_wav_path):
+            os.remove(test_wav_path)
     
     # Test with single effect
     single_effect = [{'effect': 'equalizer', 'args': ['1000', '1.0q', '6.0']}]

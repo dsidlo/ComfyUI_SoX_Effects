@@ -566,130 +566,130 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
         return formula_data
 
-def generate_combined_script (formula_data_list, output_fs=48000,
-                                  x_range="[f=20:20000]", y_range="[-60:30]"):
-    """
-    Generate a combined .gnu script from a list of formula_data dicts.
-    Assumes frequency-response plots; standardizes Fs and ranges.
+    @staticmethod
+    def generate_combined_script (formula_data_list, output_fs=48000,
+                                      x_range="[f=20:20000]", y_range="[-60:30]"):
+        """
+        Generate a combined .gnu script from a list of formula_data dicts.
+        Assumes frequency-response plots; standardizes Fs and ranges.
 
-    Note: This script does not make use of the "o" Angular Frequency, as it is only needed
-          when wildly different sample rate are involved.
-    # Example usage:
-    # combined_script = generate_combined_gnuplot([dict1, dict2, ...])
-    # with open('combined.gnu', 'w') as f:
-    #     f.write(combined_script)
-    """
-    script_parts = []
+        Note: This script does not make use of the "o" Angular Frequency, as it is only needed
+              when wildly different sample rate are involved.
+        # Example usage:
+        # combined_script = generate_combined_gnuplot([dict1, dict2, ...])
+        # with open('combined.gnu', 'w') as f:
+        #     f.write(combined_script)
+        """
+        script_parts = []
 
-    # Header: Common settings
-    script_parts.append("# Combined SoX Effects Frequency Response")
-    script_parts.append("set title 'Combined SoX Effects'")
-    script_parts.append("set xlabel 'Frequency (Hz)'")  # Use common; override from first dict if desired
-    script_parts.append("set ylabel 'Gain (dB)'")
-    script_parts.append("set logscale x")
-    script_parts.append("set samples 500")  # Higher for smoothness
-    script_parts.append("set grid xtics ytics")
-    script_parts.append("set key left top")  # Legend position
+        # Header: Common settings
+        script_parts.append("# Combined SoX Effects Frequency Response")
+        script_parts.append("set title 'Combined SoX Effects'")
+        script_parts.append("set xlabel 'Frequency (Hz)'")  # Use common; override from first dict if desired
+        script_parts.append("set ylabel 'Gain (dB)'")
+        script_parts.append("set logscale x")
+        script_parts.append("set samples 500")  # Higher for smoothness
+        script_parts.append("set grid xtics ytics")
+        script_parts.append("set key left top")  # Legend position
 
-    # Standard Fs and o
-    script_parts.append(f"Fs={output_fs}")
-    script_parts.append("o=2*pi/Fs")
+        # Standard Fs and o
+        script_parts.append(f"Fs={output_fs}")
+        script_parts.append("o=2*pi/Fs")
 
-    # Per-effect definitions (renamed to avoid conflicts)
-    plot_expressions = []
-    for i, data in enumerate(formula_data_list, start=1):
-        if data.get('effect') == 'net_response':
-            script_parts.append(f"# Net Response: {data['title']}")
-            # Build product of previous H_k(f)
-            num_prev = i - 1
-            if num_prev == 0:
-                continue  # No effects, skip net
-            product = " * ".join(f"H{k}(f)" for k in range(1, i))
-            curve_expr = f"20*log10({product})"
-            title = data.get('title', 'Combined Net Response')
-            color = f"lc {i % 8 or 8}"
+        # Per-effect definitions (renamed to avoid conflicts)
+        plot_expressions = []
+        for i, data in enumerate(formula_data_list, start=1):
+            if data.get('effect') == 'net_response':
+                script_parts.append(f"# Net Response: {data['title']}")
+                # Build product of previous H_k(f)
+                num_prev = i - 1
+                if num_prev == 0:
+                    continue  # No effects, skip net
+                product = " * ".join(f"H{k}(f)" for k in range(1, i))
+                curve_expr = f"20*log10({product})"
+                title = data.get('title', 'Combined Net Response')
+                color = f"lc {i % 8 or 8}"
+                plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
+                continue
+
+            if data.get('H'):  # Skip if no formula (e.g., compand)
+                renamed_h = data['H'].replace(r'([a-z]\d+)', r'\1_{i}')
+                renamed_h = f"H{i}(f)={renamed_h}"
+                script_parts.append(renamed_h)
+                continue
+
+            if data.get('coeffs') is None:
+                # Normal effect: rename coefficients and H(f)
+                renamed_coeffs = ''
+                if data.get('coeffs') is not None:
+                    renamed_coeffs = data['coeffs'].replace(r'([a-z]\d+)=', r'\1_{i}=')
+                # Add to script
+                script_parts.append(f"# Effect {i}: {data['title']}")
+                if renamed_coeffs:
+                    script_parts.append(renamed_coeffs)
+                script_parts.append(renamed_h)
+
+            # Plot expression (use parsed 'plot_curve' if available, else default)
+            curve_expr = data.get('plot_curve') or f"20*log10(H{i}(f))"
+            # Pleasing colors: cycle through rgb or linetype (lt) 1-8
+            color = f"lc {i % 8 or 8}"  # Or lc rgb '#FF0000' for red, etc.
+            title = data.get('title', f'Effect {i}')
             plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
-            continue
 
-        if not data.get('H'):  # Skip if no formula (e.g., compand)
-            continue
+        # Plot command
+        if not plot_expressions:
+            plot_expressions.append("0 title 'No Effects (Flat 0 dB)' with lines lc rgb '#808080'")
+        script_parts.append(f"plot {x_range} {y_range} \\")
+        script_parts.append(", \\\n".join(plot_expressions))
 
-        # Normal effect: rename coefficients and H(f)
-        renamed_coeffs = ''
-        if data.get('coeffs') is not None:
-            renamed_coeffs = data['coeffs'].replace('b0=', f'b0_{i}=').replace('b1=', f'b1_{i}=').replace('b2=', f'b2_{i}=')
-            renamed_coeffs = renamed_coeffs.replace('a1=', f'a1_{i}=').replace('a2=', f'a2_{i}=')
+        # Optional: Interactive pause or output to file
+        # script_parts.append("pause -1 'Hit return to continue'")
+        # Or for PNG: uncomment below
+        # script_parts.append("set term png size 800,600")
+        # script_parts.append("set output 'combined.png'")
+        # script_parts.append("replot")  # After plot
 
-        renamed_h = data['H'].replace('b0', f'b0_{i}').replace('b1', f'b1_{i}').replace('b2', f'b2_{i}')
-        renamed_h = renamed_h.replace('a1', f'a1_{i}').replace('a2', f'a2_{i}')
-        renamed_h = f"H{i}(f)={renamed_h}"
+        return "\n".join(script_parts)
 
-        # Add to script
-        script_parts.append(f"# Effect {i}: {data['title']}")
-        if renamed_coeffs:
-            script_parts.append(renamed_coeffs)
-        script_parts.append(renamed_h)
+    @classmethod
+    def add_final_net_response(effects_list, fs=48000):
+        """
+        Appends a synthetic 'final_net_response' entry to the list.
+        Assumes all entries are frequency-response effects (have 'H' key).
+        Ignores compand/mcompand style entries (those with 'data').
+        """
+        # Filter only entries that have a valid H(f) formula
+        filter_effects = [d for d in effects_list if d.get('H') and d.get('fs')]
 
-        # Plot expression (use parsed 'plot_curve' if available, else default)
-        curve_expr = data.get('plot_curve') or f"20*log10(H{i}(f))"
-        # Pleasing colors: cycle through rgb or linetype (lt) 1-8
-        color = f"lc {i % 8 or 8}"  # Or lc rgb '#FF0000' for red, etc.
-        title = data.get('title', f'Effect {i}')
-        plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
+        if not filter_effects:
+            print("No frequency-response effects found → cannot create net response")
+            return effects_list
 
-    # Plot command
-    if not plot_expressions:
-        plot_expressions.append("0 title 'No Effects (Flat 0 dB)' with lines lc rgb '#808080'")
-    script_parts.append(f"plot {x_range} {y_range} \\")
-    script_parts.append(", \\\n".join(plot_expressions))
+        # Use the first effect's metadata as base, or defaults
+        first = filter_effects[0]
 
-    # Optional: Interactive pause or output to file
-    # script_parts.append("pause -1 'Hit return to continue'")
-    # Or for PNG: uncomment below
-    # script_parts.append("set term png size 800,600")
-    # script_parts.append("set output 'combined.png'")
-    # script_parts.append("replot")  # After plot
+        if len(filter_effects) == 1:
+            net_formula = filter_effects[0]['formula']
+        else:
+            product_terms = [eff['formula'] for eff in filter_effects]
+            net_formula = " * ".join(product_terms)
 
-    return "\n".join(script_parts)
+        net_entry = {
+            'effect': 'net_response',
+            'title': 'Combined Net Response',
+            'formula': net_formula,
+            'gnuplot_script': None,           # synthetic
+            'x_label':      first.get('x_label', 'Frequency (Hz)'),
+            'y_label':      first.get('y_label', 'Gain (dB)'),
+            'logscale':     first.get('logscale', 'x'),
+            'samples':      first.get('samples', 500),
+            'plot_curve':   None,
+            'fs':           fs,               # standardized
+            'data':         None              # not a transfer-curve type
+        }
 
-def add_final_net_response(effects_list, fs=48000):
-    """
-    Appends a synthetic 'final_net_response' entry to the list.
-    Assumes all entries are frequency-response effects (have 'H' key).
-    Ignores compand/mcompand style entries (those with 'data').
-    """
-    # Filter only entries that have a valid H(f) formula
-    filter_effects = [d for d in effects_list if d.get('H') and d.get('fs')]
-
-    if not filter_effects:
-        print("No frequency-response effects found → cannot create net response")
+        effects_list.append(net_entry)
         return effects_list
-
-    # Use the first effect's metadata as base, or defaults
-    first = filter_effects[0]
-
-    if len(filter_effects) == 1:
-        net_formula = filter_effects[0]['formula']
-    else:
-        product_terms = [eff['formula'] for eff in filter_effects]
-        net_formula = " * ".join(product_terms)
-
-    net_entry = {
-        'effect': 'net_response',
-        'title': 'Combined Net Response',
-        'formula': net_formula,
-        'gnuplot_script': None,           # synthetic
-        'x_label':      first.get('x_label', 'Frequency (Hz)'),
-        'y_label':      first.get('y_label', 'Gain (dB)'),
-        'logscale':     first.get('logscale', 'x'),
-        'samples':      first.get('samples', 500),
-        'plot_curve':   None,
-        'fs':           fs,               # standardized
-        'data':         None              # not a transfer-curve type
-    }
-
-    effects_list.append(net_entry)
-    return effects_list
 
 
 class SoxAllpassNode:

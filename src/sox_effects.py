@@ -614,10 +614,10 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
             if data.get('H'):  # Skip if no formula (e.g., compand)
                 if data.get('coeffs'):
-                    renamed_coeffs = re.sub(r'([ab][0-2])=([^; ]+)', r'\\1_{i}=\\2', data['coeffs'])
+                    renamed_coeffs = re.sub(r'([ab][0-2])=([^; ]+)', lambda m: f"{m.group(1)}_{i}={m.group(2)}", data['coeffs'])
                     script_parts.append(renamed_coeffs + ';')
-                renamed_h = re.sub(r'([ab][0-2])', r'\\1_{i}', data['H'])
-                renamed_h = f"H{i}(f)={renamed_h}"
+                renamed_h_formula = re.sub(r'([ab][0-2])', lambda m: f"{m.group(1)}_{i}", data['H'])
+                renamed_h = f"H{i}(f)={renamed_h_formula}"
                 script_parts.append(renamed_h)
 
             # Plot expression (use parsed 'plot_curve' if available, else default)

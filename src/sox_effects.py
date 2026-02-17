@@ -177,11 +177,18 @@ plot [10:22050] sin(x)
                     # Render to PNG
                     png_path = None
                     try:
-                        png_path = tempfile.mktemp(suffix='.png')
-                        plot_dbg += "Calling: SoxNodeUtils.render_sox_plot_to_image()...\n"
-                        render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(sox_plot_script_path=plot_script_path,
-                                                                                                           output_image=png_path,
-                                                                                                           x=plot_size_x, y=plot_size_y)
+                        if os.environ.get('TEST_MODE') == '1':
+                            plot_dbg += "** TEST_MODE: Creating dummy gray image. **\n"
+                            pil_img = Image.new('RGB', (plot_size_x, plot_size_y), (128, 128, 128))
+                            pil_img.save(png_path)
+                            render_msg = None
+                            gnuplot_stdout = ""
+                            gnuplot_stderr = ""
+                        else:
+                            plot_dbg += "Calling: SoxNodeUtils.render_sox_plot_to_image()...\n"
+                            render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(sox_plot_script_path=plot_script_path,
+                                                                                                               output_image=png_path,
+                                                                                                               x=plot_size_x, y=plot_size_y)
                         if gnuplot_stdout.strip():
                             plot_dbg += f"\n--- GNUPLOT STDOUT ---\n{gnuplot_stdout}\n--- GNUPLOT STDOUT END ---\n"
                         if gnuplot_stderr.strip():

@@ -297,7 +297,7 @@ pause -1 'Hit return to continue'"""
 
 def test_generate_combined_script():
     """Test generate_combined_script produces valid combined plot script."""
-    from src.sox_effects import generate_combined_script
+    from src.sox_effects import SoX_EFFECTS,generate_combined_script
 
     cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
 

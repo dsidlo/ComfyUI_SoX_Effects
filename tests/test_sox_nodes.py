@@ -149,23 +149,12 @@ def test_get_gnuplot_formulas():
     cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
     
     sample_rate = 44100
-    # Generate a test WAV file with tone
-    duration = 1.0
-    t = torch.linspace(0, duration, int(sample_rate * duration), dtype=torch.float32)
-    test_audio = (torch.sin(2 * np.pi * 440 * t) + 0.5 * torch.sin(2 * np.pi * 880 * t)).unsqueeze(0)
+    plottable_effects = [
+        {'effect': 'highpass', 'args': ['-2', '1000', '0.707q']},
+        {'effect': 'bass', 'args': ['12.0', '100.0']}
+    ]
     
-    test_wav_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            test_wav_path = f.name
-            torchaudio.save(test_wav_path, test_audio, sample_rate)
-        
-        plottable_effects = [
-            {'effect': 'highpass', 'args': ['-2', '1000', '0.707q']},
-            {'effect': 'bass', 'args': ['12.0', '100.0']}
-        ]
-        
-        results = cls.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=test_wav_path)
+    results = cls.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=None)
     
         # Should return results for all effects
         assert len(results) == 2
@@ -188,15 +177,13 @@ def test_get_gnuplot_formulas():
                 assert isinstance(result['gnuplot_formula'], str)
                 # xrange should be a list or None
                 if result['xrange'] is not None:
-                    assert isinstance(result['xrange'], list)
-                    assert len(result['xrange']) == 2
+                    assert isinstance(result['xrange'], str)
+                if result['yrange'] is not None:
+                    assert isinstance(result['yrange'], str)
     
         # Test empty list
         assert cls.get_gnuplot_formulas([]) == []
     
-    finally:
-        if test_wav_path and os.path.exists(test_wav_path):
-            os.remove(test_wav_path)
     
     # Test with single effect
     single_effect = [{'effect': 'equalizer', 'args': ['1000', '1.0q', '6.0']}]

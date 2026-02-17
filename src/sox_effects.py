@@ -418,7 +418,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         return plottable_effects
 
     @staticmethod
-    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None):
+    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None, final_net_response=False):
 
         """
         Generate gnuplot formulas for each plottable effect by running SoX --plot.
@@ -494,6 +494,36 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             os.remove(output_path)
         except OSError:
             pass
+
+        if final_net_response:
+            filter_effects = [d for d in results if 'error' not in d and d.get('formula')]
+            if len(filter_effects) > 0:
+                first = filter_effects[0]
+                if len(filter_effects) == 1:
+                    net_formula = filter_effects[0]['formula']
+                else:
+                    combined_h = " * ".join(d['formula'] for d in filter_effects)
+                    net_formula = f"H_net(f)={combined_h}"
+                net_entry = {
+                    'effect': 'net_response',
+                    'args': [],
+                    'title': 'Combined Net Response',
+                    'x_label': first.get('x_label', 'Frequency (Hz)'),
+                    'y_label': first.get('y_label', 'Amplitude Response (dB)'),
+                    'logscale': first.get('logscale', 'x'),
+                    'samples': first.get('samples', '250'),
+                    'fs': float(sample_rate),
+                    'H': net_formula,
+                    'coeffs': None,
+                    'formula': net_formula,
+                    'xrange': first.get('xrange'),
+                    'yrange': first.get('yrange'),
+                    'step': None,
+                    'gnuplot_script': None,
+                    'data': None,
+                }
+                results.append(net_entry)
+
         return results
 
     @staticmethod
@@ -647,47 +677,6 @@ def generate_combined_script (formula_data_list, output_fs=48000,
 
     return "\n".join(script_parts)
 
-def add_final_net_response(plottable_effects, fs=48000):
-    """
-    Appends a synthetic 'final_net_response' entry to the list.
-    Assumes all entries are frequency-response effects (have 'H' key).
-    Ignores compand/mcompand style entries (those with 'data').
-    """
-    # Filter only entries that have a valid H(f) formula
-    filter_effects = [d for d in plottable_effects if d.get('H') and d.get('fs')]
-
-    if not filter_effects:
-        print("No frequency-response effects found → cannot create net response")
-        return
-
-    # Build the combined H expression
-    combined_h = " * ".join(
-        f"abs({d['H'].split('=',1)[1].strip()})"   # take right side of H(f)=...
-        for d in filter_effects
-    )
-
-    # For dB plot we actually want the product inside 20*log10()
-    plot_expr = f"20*log10({combined_h})" if combined_h else None
-
-    # Use the first effect's metadata as base, or defaults
-    first = filter_effects[0]
-
-    net_entry = {
-        'gnuplot_script': None,           # synthetic
-        'title':        'Final Net Response (product of all filters)',
-        'x_label':      first.get('x_label', 'Frequency (Hz)'),
-        'y_label':      first.get('y_label', 'Gain (dB)'),
-        'logscale':     first.get('logscale', 'x'),
-        'samples':      first.get('samples', 500),
-        'plot_curve':   plot_expr,        # ← this is what you'll use in plot
-        'fs':           fs,               # standardized
-        'H':            f"H_net(f) = {combined_h}",  # optional, for reference
-        'coeffs':       None,             # no individual coeffs
-        'data':         None              # not a transfer-curve type
-    }
-
-    plottable_effects.append(net_entry)
-    return net_entry
 
 
 class SoxAllpassNode:

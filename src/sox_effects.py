@@ -171,6 +171,7 @@ plot [10:22050] sin(x)
                     f.write(filtered_content)
                 plot_dbg += f"Plot script generated: {plot_script_path}\n--- script start---\n{filtered_content}\n--- script end---\n\n"
                 # Render to PNG
+                png_path = None
                 try:
                     png_path = tempfile.mktemp(suffix='.png')
                     plot_dbg += "Calling: SoxNodeUtils.render_sox_plot_to_image()...\n"
@@ -236,6 +237,14 @@ plot [10:22050] sin(x)
                 except Exception as e:
                     sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
                     plot_dbg += f"*** Exception ***: gnuplot Render failed\n{str(e)}\n--- open_plot ---\n{plot_dbg}\n--- open_plot end ---\n\n"
+                finally:
+                    # Cleanup temps
+                    for path in [input_path, output_path, plot_script_path, png_path]:
+                        if path and os.path.exists(path):
+                            try:
+                                os.remove(path)
+                            except OSError:
+                                pass
         for i in range(waveform.shape[0]):
             single_waveform = waveform[i]
 
@@ -293,32 +302,6 @@ plot [10:22050] sin(x)
 
         processed_audio = {"waveform": stacked, "sample_rate": sample_rate}
         sox_dbg += "--- ...Prep Output Waveforms Compelted ---\n"
-
-        # Prepare image_out
-        batch_imgs = []
-        sox_dbg += "--- Prep Output Image ---\n"
-        if enable_sox_plot:
-            # PNG exists (/tmp/png_path), load IMAGE first
-            try:
-                pil_img = Image.open(png_path)
-                if pil_img.mode != "RGB":
-                    pil_img = pil_img.convert("RGB")
-                img_np = np.array(pil_img)
-                img_t = (torch.from_numpy(img_np).to(torch.float32) / 255.0).unsqueeze(0)
-                batch_imgs.append(img_t)
-                sox_dbg += "Successful Output Image preparation.\n"
-            except Exception as e:
-                sox_dbg += f"\n*** Exception Preparing Output Image:***\n{e}\n\n"
-                batch_imgs.append(torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32))
-            finally:
-                # Cleanup temps
-                for path in [input_path, output_path, plot_script_path, png_path]:
-                    if path and os.path.exists(path):
-                        try:
-                            os.remove(path)
-                        except OSError:
-                            pass
-            sox_plot_image = torch.cat(batch_imgs, dim=0) if batch_imgs else torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
 
         # Combine debug
         full_dbg = f"Model Command: {cmd_str}\n\n=== plot_dbg ===\n{plot_dbg}\n=== plot_dbg end ===\n\n=== sox_dbg ===\n{sox_dbg}\n=== sox_dbg end ===\n".strip()

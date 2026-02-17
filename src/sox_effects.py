@@ -148,14 +148,20 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 temp_gnu.close()
                 # Create a tmp png file
                 temp_png_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{tmp_png_file.name}'"
+                png_path = temp_png_file.name
+                e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{temp_png_file.name}'"
                 gnu_plot_cmd = ['gnuplot', '-e', e_param, temp_gnu.name]
+                plot_script_path = temp_gnu.name
+                render_msg = None
+                gnuplot_stderr = ""
                 try:
                     # Render to PNG
                     plot_dbg += f"-- SoX Plots Cmd: {shlex.join(gnu_plot_cmd)}\n"
                     result = subprocess.run(gnu_plot_cmd, capture_output=True, check=False, text=True)
+                    gnuplot_stderr = result.stderr
                     if (enable_sox_plot is True and result.returncode != 2) or (enable_sox_plot is False and result.returncode != 0):
                         plot_dbg += f"-- *** SoX Plot: cmd failed (rc={result.returncode}); skipping render. **\n"
+                        render_msg = "failed"
                     plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
                     if result.stdout.strip():
                         plot_dbg += f"\n--- Sox Plot: STDOUT ---\n{result.stdout.strip()}\n--- Sox Plot:  STDOUT END ---\n"
@@ -190,14 +196,14 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                                     m = re.match(pattern, f)
                                     if m:
                                         nums.append(int(m.group(1)))
-                            except OSError:
+                            except OSError as e:
                                 plot_dbg += f"-- Sox Plot: ** Exception finding existing plot files: {str(e)}\n"
                             finally:
                                 # Add file sequence number to filename
                                 next_seq = max(nums, default=0) + 1
                                 filename = f"{filename_prefix}_{next_seq:04d}.png"
                                 full_save_path = os.path.join(dir_path, filename)
-                                shutil.copy2(temp_png_file, full_save_path)
+                                shutil.copy2(temp_png_file.name, full_save_path)
                                 plot_dbg += f"-- Sox Plot:  filename: {filename}  full_save_path: {full_save_path}\n"
                                 plot_dbg += f"--> Sox Plot: ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
                     else:
@@ -205,8 +211,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
                     if render_msg is None:
                         # Load PNG as IMAGE tensor
-                        plot_dbg += f"-- Sox Plot: Opening Rendered Image ({temp_png_file})..."
-                        pil_img = Image.open(temp_png_file).convert("RGB")
+                        plot_dbg += f"-- Sox Plot: Opening Rendered Image ({temp_png_file.name})..."
+                        pil_img = Image.open(temp_png_file.name).convert("RGB")
                         img_array = np.array(pil_img)
                         sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
                         plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"

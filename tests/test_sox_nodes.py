@@ -24,7 +24,7 @@ node_names = [
 @pytest.fixture
 def mock_audio():
     return {
-        'samples': torch.zeros((1, 1, 44100)),
+        'samples': torch.sin(2 * torch.pi * torch.arange(44100).float() / 44100 * 440).unsqueeze(0).unsqueeze(0),
         'sampling_rate': 44100
     }
 
@@ -88,7 +88,7 @@ def test_process_defaults(node_name, mock_audio):
         elif type_ == 'INT':
             kwargs[name] = spec.get('default', 1)
         elif type_ == 'SOX_PARAMS':
-            kwargs[name] = None
+            kwargs[name] = {"sox_params": []}
         else:
             kwargs[name] = spec.get('default', None)
     node = cls()

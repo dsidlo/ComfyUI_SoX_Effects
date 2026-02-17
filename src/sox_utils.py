@@ -4,6 +4,7 @@ import os
 import shlex
 import torch
 import torchaudio
+import soundfile as sf
 import numpy as np
 import uuid
 import re
@@ -219,7 +220,7 @@ class SoxUtilSpectrogramNode:
                     w_b_2d = waveform_sp[b:b + 1].squeeze(0)
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_in:
                         input_path = tmp_in.name
-                        torchaudio.save(input_path, w_b_2d, sr_sp)
+                        sf.write(input_path, w_b_2d.cpu().numpy().T, sr_sp)
                     spec_input_path = input_path
                     output_path = None
                     if current_params:

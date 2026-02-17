@@ -463,6 +463,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     results.append({
                         'effect': effect_name,
                         'args': args,
+                        'gnuplot_script': formula_data.get('gnuplot_script', ''),
                         'gnuplot_formula': formula_data.get('formula', ''),
                         'xrange': formula_data.get('xrange'),
                         'yrange': formula_data.get('yrange'),
@@ -502,77 +503,130 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             Dict with 'formula', 'xrange', 'yrange', 'step'
         """
         formula_data = {
-            'formula': '',
-            'xrange': None,
-            'yrange': None,
-            'step': None
+            'gnuplot_script': script,
+            'title': '',
+            'x_label': None,
+            'y_label': None,
+            'logscale': None,
+            'samples': None,
+            'plot_curve': None,
+            'fs': None,
+            'H': None,
+            'coeffs': None,
+            'data': None
         }
-        
-        lines = script.split('\n')
-        
-        for line in lines:
-            line = line.strip()
-            
-            # Extract xrange
-            if line.startswith('set xrange'):
-                # Parse "set xrange [min:max]" or "set xrange [*:*]"
-                match = re.search(r'\[([^:]+):([^]]+)\]', line)
-                if match:
-                    xmin_str, xmax_str = match.group(1), match.group(2)
-                    try:
-                        xmin = float(xmin_str) if xmin_str != '*' else None
-                        xmax = float(xmax_str) if xmax_str != '*' else None
-                        formula_data['xrange'] = [xmin, xmax]
-                        
-                        # Calculate step if we have valid range
-                        if xmin is not None and xmax is not None:
-                            # Default samples is usually 1000 in gnuplot
-                            samples = 1000
-                            # Check if samples is set explicitly
-                            for l in lines:
-                                if l.strip().startswith('set samples'):
-                                    samples_match = re.search(r'samples\s+(\d+)', l)
-                                    if samples_match:
-                                        samples = int(samples_match.group(1))
-                                        break
-                            formula_data['step'] = (xmax - xmin) / samples
-                    except ValueError:
-                        pass
-            
-            # Extract yrange
-            elif line.startswith('set yrange'):
-                match = re.search(r'\[([^:]+):([^]]+)\]', line)
-                if match:
-                    ymin_str, ymax_str = match.group(1), match.group(2)
-                    try:
-                        ymin = float(ymin_str) if ymin_str != '*' else None
-                        ymax = float(ymax_str) if ymax_str != '*' else None
-                        formula_data['yrange'] = [ymin, ymax]
-                    except ValueError:
-                        pass
-            
-            # Extract samples setting
-            elif line.startswith('set samples'):
-                samples_match = re.search(r'samples\s+(\d+)', line)
-                if samples_match and formula_data['xrange']:
-                    samples = int(samples_match.group(1))
-                    xmin, xmax = formula_data['xrange']
-                    if xmin is not None and xmax is not None:
-                        formula_data['step'] = (xmax - xmin) / samples
-            
-            # Extract formula from plot command
-            # Look for lines like: plot ... title '...' with lines, ...
-            elif line.startswith('plot') or line.startswith('replot'):
-                # Extract the formula part after 'plot' and before 'title' or 'with'
-                # Example: plot [0:22050] 20*log10(abs(1/sqrt((1+($1/1000)**2)))) title 'highpass' with lines
-                plot_match = re.search(r'plot\s+(?:\[.*?\]\s+)?(.*?)(?:\s+title|\s+with|$)', line)
-                if plot_match:
-                    formula_data['formula'] = plot_match.group(1).strip()
-                else:
-                    # Fallback: just take everything after 'plot'
-                    formula_data['formula'] = line[4:].strip()
-        
+
+        f_match = re.match(r'(?m)^\s*(?!#)(?!set\b)(?!plot\b)(?!pause\b).*?$')
+        if not f_match:
+            formula = 'regexp match failed for gnuplot script formulas'
+        else:
+            formula = f_match.group(2)
+
+        title = re.search(r"set title '([^']+)'", content).group(1)
+        if title:
+            formula.title = title
+        x_label = re.search(r"set xlabel '([^']+)'", content).group(1)
+        if x_label:
+            formula.x_label = x_label
+        y_label = re.search(r"set ylabel '([^']+)'",content).group(1)
+        if y_label:
+            formula.y_label = y_label
+        logscale = re.search(r"set logscale (x)", content).group(1)
+        if logscale:
+            formula.logscale = logscale
+        samples = re.search(r"set samples ([\d.]+)", content).group(1)
+        if samples:
+            formula.samples = samples
+        plot_curve = re.search(r"plot '([^']+)'", content).group(1)
+        if plot_curve:
+            formula.plot_curve = plot_curve
+        # Get the Sample_Rate and Niquist
+        fs = float(re.search(r"Fs=(\d+)", content).group(1))
+        if fs:
+            formula.fs = fs
+        # For H(f) effects:
+        # - This is the transfer function.
+        # - How the filter transforms the input frequency f.
+        h_def = re.search(r"H\(f\)=(.*?)\n", content, re.DOTALL).group(1).strip()
+        if h_def:
+            formula.H = h_def
+        # Get the Coefficients & Angular Frequency
+        coeffs = re.fetchall(r"(^[a-z]\d?=.*)\n", content).group(1)
+        if coeffs:
+            formula.coeffs = coeffs
+        # Get the Data
+        # After 'plot -'
+        data = re.findall(r"(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\s+(-?\d+\.?\d*(?:[eE][+-]?\d+)?)", content)
+        if data:
+            formula.data = data
+
         return formula_data
+
+def generate_combined_script (formula_data_list, output_fs=48000,
+                                  x_range="[f=20:20000]", y_range="[-60:30]"):
+    """
+    Generate a combined .gnu script from a list of formula_data dicts.
+    Assumes frequency-response plots; standardizes Fs and ranges.
+
+    Note: This script does not make use of the "o" Angular Frequency, as it is only needed
+          when wildly different sample rate are involved.
+    # Example usage:
+    # combined_script = generate_combined_gnuplot([dict1, dict2, ...])
+    # with open('combined.gnu', 'w') as f:
+    #     f.write(combined_script)
+    """
+    script_parts = []
+
+    # Header: Common settings
+    script_parts.append("# Combined SoX Effects Frequency Response")
+    script_parts.append("set title 'Combined SoX Effects'")
+    script_parts.append("set xlabel 'Frequency (Hz)'")  # Use common; override from first dict if desired
+    script_parts.append("set ylabel 'Gain (dB)'")
+    script_parts.append("set logscale x")
+    script_parts.append("set samples 500")  # Higher for smoothness
+    script_parts.append("set grid xtics ytics")
+    script_parts.append("set key left top")  # Legend position
+
+    # Standard Fs and o
+    script_parts.append(f"Fs={output_fs}")
+    script_parts.append("o=2*pi/Fs")
+
+    # Per-effect definitions (renamed to avoid conflicts)
+    plot_expressions = []
+    for i, data in enumerate(formula_data_list, start=1):
+        if not data['H']:  # Skip if no formula (e.g., compand)
+            continue
+
+        # Rename coefficients and H(f)
+        renamed_coeffs = data['coeffs'].replace('b0=', f'b0_{i}=').replace('b1=', f'b1_{i}=').replace('b2=', f'b2_{i}=')
+        renamed_coeffs = renamed_coeffs.replace('a1=', f'a1_{i}=').replace('a2=', f'a2_{i}=')
+        renamed_h = data['H'].replace('b0', f'b0_{i}').replace('b1', f'b1_{i}').replace('b2', f'b2_{i}')
+        renamed_h = renamed_h.replace('a1', f'a1_{i}').replace('a2', f'a2_{i}')
+        renamed_h = renamed_h.replace('H(f)=', f'H{i}(f)=')
+
+        # Add to script
+        script_parts.append(f"# Effect {i}: {data['title']}")
+        script_parts.append(renamed_coeffs)
+        script_parts.append(renamed_h)
+
+        # Plot expression (use parsed 'plot_curve' if available, else default)
+        curve_expr = data['plot_curve'] or f"20*log10(H{i}(f))"
+        # Pleasing colors: cycle through rgb or linetype (lt) 1-8
+        color = f"lc {i}"  # Or lc rgb '#FF0000' for red, etc.
+        plot_expressions.append(f"{curve_expr} title '{data['title']}' with lines {color}")
+
+    # Plot command
+    script_parts.append(f"plot {x_range} {y_range} \\")
+    script_parts.append(", \\\n".join(plot_expressions))
+
+    # Optional: Interactive pause or output to file
+    script_parts.append("pause -1 'Hit return to continue'")
+    # Or for PNG: uncomment below
+    # script_parts.append("set term png size 800,600")
+    # script_parts.append("set output 'combined.png'")
+    # script_parts.append("replot")  # After plot
+
+    return "\n".join(script_parts)
 
 
 class SoxAllpassNode:

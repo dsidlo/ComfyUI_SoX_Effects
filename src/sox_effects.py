@@ -274,7 +274,6 @@ plot [10:22050] sin(x)
                     sox_dbg += f"** TEST_MODE: Fake SoX apply (add noise). **\n"
                     out_waveform = single_waveform + 0.01 * torch.rand_like(single_waveform)
                     out_waveform = torch.clamp(out_waveform, -1.0, 1.0)
-                    output_waveforms[-1] = out_waveform
                     sp_ret = type('FakeResult', (), {'returncode': 0, 'stdout': '', 'stderr': ''})()
                 else:
                     try:

@@ -112,7 +112,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
 
-        sox_cmd_params = params.get("sox_params", [])
+        sox_cmd_params = params.get("sox_params", []) if params is not None else []
         cmd_str = "sox input.wav output.wav " + shlex.join(
             sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
 
@@ -135,6 +135,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if not sox_cmd_params:
                 plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
+                plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
+                plot_dbg += f"** SoX Plot cmd executed: {shlex.join(plot_cmd)}\n"
                 if os.environ.get('TEST_MODE') == '1':
                     plot_dbg += "** TEST_MODE: Fake plot generation. **\n"
                     gnuplot_script = """# fake gnuplot script
@@ -146,14 +148,9 @@ set samples 250
 plot [10:22050] sin(x)
 """
                 else:
-                    plottable_effects = self.get_plottable_effects(sox_cmd_params)
-                    gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate)
-                    gnu_plot_script = generate_combined_script(gnu_formulas)
                     # Run SoX --plot gnuplot input.wav output.wav [effects] to generate script (with temp files)
-                    plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
                     plot_script_path = tempfile.mktemp(suffix='.soxplot')
                     try:
-                        plot_dbg += f"** SoX Plot cmd executed: {shlex.join(plot_cmd)}\n"
                         result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
                         if (enable_sox_plot is True and result.returncode != 2) or (enable_sox_plot is False and result.returncode != 0):
                             plot_dbg += f"** SoX Plot cmd failed (rc={result.returncode}); skipping render. **\n"
@@ -322,7 +319,6 @@ plot [10:22050] sin(x)
                         except OSError:
                             pass
             sox_plot_image = torch.cat(batch_imgs, dim=0)
-        sox_dbg += "--- Prep Output Image ---\n"
 
         # Combine debug
         full_dbg = f"Model Command: {cmd_str}\n\n=== plot_dbg ===\n{plot_dbg}\n=== plot_dbg end ===\n\n=== sox_dbg ===\n{sox_dbg}\n=== sox_dbg end ===\n".strip()
@@ -664,8 +660,8 @@ plot [10:22050] sin(x)
 
         return formula_data
 
-def generate_combined_script (formula_data_list, output_fs=48000,
-                                  x_range="[f=20:20000]", y_range="[-60:30]"):
+def generate_combined_script(formula_data_list, output_fs=48000,
+                             x_range="[f=20:20000]", y_range="[-60:30]"):
     """
     Generate a combined .gnu script from a list of formula_data dicts.
     Assumes frequency-response plots; standardizes Fs and ranges.

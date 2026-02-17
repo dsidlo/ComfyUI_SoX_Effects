@@ -608,8 +608,11 @@ def generate_combined_script (formula_data_list, output_fs=48000,
             continue
 
         # Rename coefficients and H(f)
-        renamed_coeffs = data['coeffs'].replace('b0=', f'b0_{i}=').replace('b1=', f'b1_{i}=').replace('b2=', f'b2_{i}=')
-        renamed_coeffs = renamed_coeffs.replace('a1=', f'a1_{i}=').replace('a2=', f'a2_{i}=')
+        if data.get('coeffs') is None:
+            renamed_coeffs = ''
+        else:
+            renamed_coeffs = data['coeffs'].replace('b0=', f'b0_{i}=').replace('b1=', f'b1_{i}=').replace('b2=', f'b2_{i}=')
+            renamed_coeffs = renamed_coeffs.replace('a1=', f'a1_{i}=').replace('a2=', f'a2_{i}=')
         renamed_h = data['H'].replace('b0', f'b0_{i}').replace('b1', f'b1_{i}').replace('b2', f'b2_{i}')
         renamed_h = renamed_h.replace('a1', f'a1_{i}').replace('a2', f'a2_{i}')
         renamed_h = f"H{i}(f)={renamed_h}"

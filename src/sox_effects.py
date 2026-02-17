@@ -44,6 +44,15 @@ class SoxApplyEffectsNode:
   - non-linear effects (reverb/echo ignored, blank plot); 
   - production audio workflows (breaks processing—use separately for tuning)."""
                 }),
+                "final_net_response": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": """Enable Plotting the Final Net Effect of all plottable sox effects (product of all transfer functions).
+- Only supported for effects with frequency response (H(f) formula).
+- Ignores compand/mcompand style effects (those with 'data').
+- Adds a synthetic 'net_response' entry to the list.
+- Useful for analyzing combined filter effects.
+- Example: Chain 'highpass 1000' and 'lowpass 5000' → plot combined response curve."""
+                }),
                 "plot_size_x": ("INT", {
                     "default": 800,
                     "min": 100,
@@ -97,6 +106,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
     - *** If enable_sox_plot=True, no audio processing is performed. ***"""
 
     def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False,
+                      final_net_response=False,
                       plot_size_x=800, plot_size_y=400,
                       save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
         waveform = audio["waveform"]
@@ -125,6 +135,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if not sox_cmd_params:
                 plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
+                plottable_effects = get_plottable_effects(params)
+                gnu_formulas = get_gnuplot_formulas(plottable_effects)
+                gnu_plot_script = generate_combined_script(gnu_formulas)
                 # Run SoX --plot gnuplot input.wav output.wav [effects] to generate script (with temp files)
                 plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
                 plot_script_path = tempfile.mktemp(suffix='.soxplot')
@@ -286,7 +299,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         return (processed_audio, sox_plot_image, full_dbg)
 
     @staticmethod
-    def get_plottable_effects(sox_params):
+    def get_plottable_effects(sox_params: list[str]):
         """
         Iterate through the effects stack and identify plottable effects.
         
@@ -405,7 +418,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         return plottable_effects
 
     @staticmethod
-    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None, final_net_response: bool = False):
+    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None):
 
         """
         Generate gnuplot formulas for each plottable effect by running SoX --plot.
@@ -471,20 +484,6 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     formula_data['args'] = args
                     formula_data['error'] = str(e)
                     results.append(formula_data)
-
-        if final_net_response and results:
-            if len(results) == 1:
-                product_body = results[0]['formula']
-            else:
-                product_body = ' * '.join([f"({fd['formula']})" for fd in results if 'formula' in fd and fd['formula']])
-            net_data = results[0].copy()
-            net_data['effect'] = 'net_response'
-            net_data['args'] = []
-            net_data['formula'] = product_body
-            net_data['H'] = product_body
-            net_data['title'] = 'Combined Net Response'
-            net_data['coeffs'] = None
-            results.append(net_data)
 
         if synthetic_created:
             try:
@@ -647,6 +646,48 @@ def generate_combined_script (formula_data_list, output_fs=48000,
     # script_parts.append("replot")  # After plot
 
     return "\n".join(script_parts)
+
+def add_final_net_response(plottable_effects, fs=48000):
+    """
+    Appends a synthetic 'final_net_response' entry to the list.
+    Assumes all entries are frequency-response effects (have 'H' key).
+    Ignores compand/mcompand style entries (those with 'data').
+    """
+    # Filter only entries that have a valid H(f) formula
+    filter_effects = [d for d in plottable_effects if d.get('H') and d.get('fs')]
+
+    if not filter_effects:
+        print("No frequency-response effects found → cannot create net response")
+        return
+
+    # Build the combined H expression
+    combined_h = " * ".join(
+        f"abs({d['H'].split('=',1)[1].strip()})"   # take right side of H(f)=...
+        for d in filter_effects
+    )
+
+    # For dB plot we actually want the product inside 20*log10()
+    plot_expr = f"20*log10({combined_h})" if combined_h else None
+
+    # Use the first effect's metadata as base, or defaults
+    first = filter_effects[0]
+
+    net_entry = {
+        'gnuplot_script': None,           # synthetic
+        'title':        'Final Net Response (product of all filters)',
+        'x_label':      first.get('x_label', 'Frequency (Hz)'),
+        'y_label':      first.get('y_label', 'Gain (dB)'),
+        'logscale':     first.get('logscale', 'x'),
+        'samples':      first.get('samples', 500),
+        'plot_curve':   plot_expr,        # ← this is what you'll use in plot
+        'fs':           fs,               # standardized
+        'H':            f"H_net(f) = {combined_h}",  # optional, for reference
+        'coeffs':       None,             # no individual coeffs
+        'data':         None              # not a transfer-curve type
+    }
+
+    plottable_effects.append(net_entry)
+    return net_entry
 
 
 class SoxAllpassNode:

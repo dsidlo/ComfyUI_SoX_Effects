@@ -181,8 +181,19 @@ def test_get_gnuplot_formulas():
             if result['yrange'] is not None:
                 assert isinstance(result['yrange'], str)
 
+    # Test final_net_response=True
+    results_net = cls.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, final_net_response=True)
+    assert len(results_net) == 3
+    net = results_net[2]
+    assert net['effect'] == 'net_response'
+    assert net['title'] == 'Combined Net Response'
+    assert isinstance(net['formula'], str)
+    assert len(net['formula']) > 10  # non-empty
+    assert ' * ' in net['formula']
+
     # Test empty list
     assert cls.get_gnuplot_formulas([]) == []
+    assert cls.get_gnuplot_formulas([], final_net_response=True) == []
     
     
     # Test with single effect
@@ -190,6 +201,13 @@ def test_get_gnuplot_formulas():
     single_result = cls.get_gnuplot_formulas(single_effect)
     assert len(single_result) == 1
     assert single_result[0]['effect'] == 'equalizer'
+
+    # Test single with final_net_response=True
+    single_net = cls.get_gnuplot_formulas(single_effect, final_net_response=True)
+    assert len(single_net) == 2
+    net_single = single_net[1]
+    assert net_single['effect'] == 'net_response'
+    assert net_single['formula'] == single_result[0]['formula']  # exact
 
 
 def test_parse_gnuplot_script():

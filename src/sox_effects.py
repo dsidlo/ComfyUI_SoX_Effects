@@ -405,7 +405,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         return plottable_effects
 
     @staticmethod
-    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None):
+    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None, final_net_response: bool = False):
 
         """
         Generate gnuplot formulas for each plottable effect by running SoX --plot.
@@ -417,6 +417,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         Args:
             plottable_effects: List of dicts from get_plottable_effects()
             sample_rate: Sample rate for the dummy audio file (default 44100)
+            final_net_response: If True, adds a net_response entry with combined formula.
             
         Returns:
             List of dicts containing:
@@ -470,6 +471,21 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     formula_data['args'] = args
                     formula_data['error'] = str(e)
                     results.append(formula_data)
+
+        if final_net_response and results:
+            if len(results) == 1:
+                product_body = results[0]['formula']
+            else:
+                product_body = ' * '.join([f"({fd['formula']})" for fd in results if 'formula' in fd and fd['formula']])
+            net_data = results[0].copy()
+            net_data['effect'] = 'net_response'
+            net_data['args'] = []
+            net_data['formula'] = product_body
+            net_data['H'] = product_body
+            net_data['title'] = 'Combined Net Response'
+            net_data['coeffs'] = None
+            results.append(net_data)
+
         if synthetic_created:
             try:
                 os.remove(input_path)

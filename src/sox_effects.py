@@ -140,7 +140,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 plot_dbg += f"-- SoX Plots: Got plottable effects: {plottable_effects} \n"
                 gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=input_path, final_net_response=final_net_response)
                 plot_dbg += f"-- SoX Plots: Get Sox Plot Formulae\n"
-                gnu_plot_script = generate_combined_script(gnu_formulas, output_fs=sample_rate)
+                gnu_plot_script = SoxApplyEffectsNode.generate_combined_script(gnu_formulas, output_fs=sample_rate)
                 plot_dbg += f"-- SoX Plots: Combining plot formulas\n"
                 # Output gnu_plot_script to temp file
                 temp_gnu = tempfile.NamedTemporaryFile(suffix=".gnu", delete=False)

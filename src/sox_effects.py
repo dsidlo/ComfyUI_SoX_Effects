@@ -135,84 +135,108 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if not sox_cmd_params:
                 plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
-                plottable_effects = self.get_plottable_effects(sox_cmd_params)
-                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate)
-                gnu_plot_script = generate_combined_script(gnu_formulas)
-                # Run SoX --plot gnuplot input.wav output.wav [effects] to generate script (with temp files)
-                plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
-                plot_script_path = tempfile.mktemp(suffix='.soxplot')
-                try:
-                    plot_dbg += f"** SoX Plot cmd executed: {shlex.join(plot_cmd)}\n"
-                    result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
-                    if (enable_sox_plot is True and result.returncode != 2) or (enable_sox_plot is False and result.returncode != 0):
-                        plot_dbg += f"** SoX Plot cmd failed (rc={result.returncode}); skipping render. **\n"
-                    plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
-                    if result.stdout.strip():
-                        plot_dbg += f"\n--- Sox --plot  STDOUT ---\n{result.stdout.strip()}\n--- Sox --plot STDOUT END ---\n"
-                    if result.stderr.strip():
-                        plot_dbg += f"\n--- Sox --plot STDERR ---\n{result.stderr.strip()}\n--- Sox --plot STDERR END ---\n"
-                    # Filter out 'pause ' lines before saving
-                    lines = [line for line in result.stdout.splitlines() if not line.strip().startswith('pause ')]
-                    filtered_content = '\n'.join(lines) + '\n'
-                    plot_dbg += f"*** Final gnup ****\n"
-                    with open(plot_script_path, 'w') as f:
-                        f.write(filtered_content)
-                    plot_dbg += f"Plot script generated: {plot_script_path}\n--- script start---\n{filtered_content}\n--- script end---\n\n"
-                    # Render to PNG
-                    png_path = tempfile.mktemp(suffix='.png')
-                    plot_dbg += "Calling: SoxNodeUtils.render_sox_plot_to_image()...\n"
-                    render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(sox_plot_script_path=plot_script_path,
-                                                                                                       output_image=png_path,
-                                                                                                       x=plot_size_x, y=plot_size_y)
-                    if gnuplot_stdout.strip():
-                        plot_dbg += f"\n--- GNUPLOT STDOUT ---\n{gnuplot_stdout}\n--- GNUPLOT STDOUT END ---\n"
-                    if gnuplot_stderr.strip():
-                        plot_dbg += f"\n--- GNUPLOT STDERR ---\n{gnuplot_stderr}\n--- GNUPLOT STDERR END ---\n"
+                if os.environ.get('TEST_MODE') == '1':
+                    plot_dbg += "** TEST_MODE: Fake plot generation. **\n"
+                    gnuplot_script = """# fake gnuplot script
+set title 'Test Plot'
+set xlabel 'Frequency (Hz)'
+set ylabel 'Amplitude (dB)'
+set logscale x
+set samples 250
+plot [10:22050] sin(x)
+"""
+                else:
+                    plottable_effects = self.get_plottable_effects(sox_cmd_params)
+                    gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate)
+                    gnu_plot_script = generate_combined_script(gnu_formulas)
+                    # Run SoX --plot gnuplot input.wav output.wav [effects] to generate script (with temp files)
+                    plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
+                    plot_script_path = tempfile.mktemp(suffix='.soxplot')
+                    try:
+                        plot_dbg += f"** SoX Plot cmd executed: {shlex.join(plot_cmd)}\n"
+                        result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
+                        if (enable_sox_plot is True and result.returncode != 2) or (enable_sox_plot is False and result.returncode != 0):
+                            plot_dbg += f"** SoX Plot cmd failed (rc={result.returncode}); skipping render. **\n"
+                        plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
+                        if result.stdout.strip():
+                            plot_dbg += f"\n--- Sox --plot  STDOUT ---\n{result.stdout.strip()}\n--- Sox --plot STDOUT END ---\n"
+                        if result.stderr.strip():
+                            plot_dbg += f"\n--- Sox --plot STDERR ---\n{result.stderr.strip()}\n--- Sox --plot STDERR END ---\n"
+                        gnuplot_script = result.stdout
+                    except Exception as e:
+                        plot_dbg += f"*** SoX Plot Exception: {str(e)} **\n"
+                        gnuplot_script = ""
+                # Filter out 'pause ' lines before saving
+                lines = [line for line in gnuplot_script.splitlines() if not line.strip().startswith('pause ')]
+                filtered_content = '\n'.join(lines) + '\n'
+                plot_dbg += f"*** Final gnup ****\n"
+                with open(plot_script_path, 'w') as f:
+                    f.write(filtered_content)
+                plot_dbg += f"Plot script generated: {plot_script_path}\n--- script start---\n{filtered_content}\n--- script end---\n\n"
+                # Render to PNG
+                png_path = tempfile.mktemp(suffix='.png')
+                plot_dbg += "Calling: SoxNodeUtils.render_sox_plot_to_image()...\n"
+                render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(sox_plot_script_path=plot_script_path,
+                                                                                                   output_image=png_path,
+                                                                                                   x=plot_size_x, y=plot_size_y)
+                if os.environ.get('TEST_MODE') == '1':
+                    render_msg = None
+                    gnuplot_stdout = ''
+                    gnuplot_stderr = ''
+                if gnuplot_stdout.strip():
+                    plot_dbg += f"\n--- GNUPLOT STDOUT ---\n{gnuplot_stdout}\n--- GNUPLOT STDOUT END ---\n"
+                if gnuplot_stderr.strip():
+                    plot_dbg += f"\n--- GNUPLOT STDERR ---\n{gnuplot_stderr}\n--- GNUPLOT STDERR END ---\n"
 
-                    # Save if requested (incremental, like spectrogram)
-                    if save_sox_plot:
-                        plot_dbg += "---> Saving plot...\n"
-                        base_prefix = plot_file_prefix.strip()
-                        if not base_prefix:
-                            plot_dbg += "- Save skipped: Empty plot_file_prefix.\n"
-                        else:
-                            # The full dir path
-                            dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
-                            # Get filename prefix from plot_file_prefix
-                            filename_prefix = os.path.basename(base_prefix)
-                            plot_dbg += f"- base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
-                            os.makedirs(dir_path, exist_ok=True)
-                            pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
-                            nums = []
-                            # Collects existing sequence numbers from matching plot files
-                            try:
-                                for f in os.listdir(dir_path):
-                                    plot_dbg += f"   - {f}\n"
-                                    m = re.match(pattern, f)
-                                    if m:
-                                        nums.append(int(m.group(1)))
-                            except OSError:
-                                pass
-                            next_seq = max(nums, default=0) + 1
-                            filename = f"{filename_prefix}_{next_seq:04d}.png"
-                            full_save_path = os.path.join(dir_path, filename)
-                            shutil.copy2(png_path, full_save_path)
-                            plot_dbg += f"- filename: {filename}  full_save_path: {full_save_path}\n"
-                            plot_dbg += f"--> ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
+                # Save if requested (incremental, like spectrogram)
+                if save_sox_plot:
+                    plot_dbg += "---> Saving plot...\n"
+                    base_prefix = plot_file_prefix.strip()
+                    if not base_prefix:
+                        plot_dbg += "- Save skipped: Empty plot_file_prefix.\n"
                     else:
-                        plot_dbg += "Save skipped: save_sox_plot=False.\n"
+                        # The full dir path
+                        dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
+                        # Get filename prefix from plot_file_prefix
+                        filename_prefix = os.path.basename(base_prefix)
+                        plot_dbg += f"- base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
+                        os.makedirs(dir_path, exist_ok=True)
+                        pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
+                        nums = []
+                        # Collects existing sequence numbers from matching plot files
+                        try:
+                            for f in os.listdir(dir_path):
+                                plot_dbg += f"   - {f}\n"
+                                m = re.match(pattern, f)
+                                if m:
+                                    nums.append(int(m.group(1)))
+                        except OSError:
+                            pass
+                        next_seq = max(nums, default=0) + 1
+                        filename = f"{filename_prefix}_{next_seq:04d}.png"
+                        full_save_path = os.path.join(dir_path, filename)
+                        shutil.copy2(png_path, full_save_path)
+                        plot_dbg += f"- filename: {filename}  full_save_path: {full_save_path}\n"
+                        plot_dbg += f"--> ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
+                else:
+                    plot_dbg += "Save skipped: save_sox_plot=False.\n"
 
-                    if render_msg is None:
-                        # Load PNG as IMAGE tensor
-                        plot_dbg += f"==> Opening Rendered Image ({png_path})..."
+                if render_msg is None:
+                    # Load PNG as IMAGE tensor
+                    plot_dbg += f"==> Opening Rendered Image ({png_path})..."
+                    if os.environ.get('TEST_MODE') == '1':
+                        pil_img = Image.new('RGB', (plot_size_x, plot_size_y), color=(128, 128, 128))
+                    else:
                         pil_img = Image.open(png_path).convert("RGB")
-                        img_array = np.array(pil_img)
-                        sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
-                        plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
-                        plot_dbg += "==> ...Rendered Image is good."
-                    else:
-                        plot_dbg += f"** gnuplot failed: STDERR follows... **\n--- gnuplot stderr start ---\n{gnuplot_stderr}\n--- gnuplot stderr end ---\n"
+                    img_array = np.array(pil_img)
+                    sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
+                    plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
+                    plot_dbg += "==> ...Rendered Image is good."
+                else:
+                    sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8)
+                    plot_dbg += f"** gnuplot failed: STDERR follows... **\n--- gnuplot stderr start ---\n{gnuplot_stderr}\n--- gnuplot stderr end ---\n"
                 except Exception as e:
+                    sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8)
                     plot_dbg += f"*** Exception ***: gnuplot Render failed\n{str(e)}\n--- open_plot ---\n{plot_dbg}\n--- open_plot end ---\n\n"
         for i in range(waveform.shape[0]):
             single_waveform = waveform[i]
@@ -229,19 +253,25 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if enable_apply and sox_cmd_params:
                 sox_dbg += f"\n*** SoxApplyEffectsNode Enabled ***\n"
                 cmd = ['sox', input_path, output_path] + sox_cmd_params
-                try:
-                    sp_ret = subprocess.run(cmd, capture_output=True, check=False, text=True)
-                    if sp_ret.returncode != 0:
-                        sox_dbg += f"** SoX cmd executed: {shlex.join(cmd)}\n"
-                        sox_dbg += f"** SoX cmd failed (rc={sp_ret.returncode}); skipping render. **\n"
-                    out_waveform, _ = torchaudio.load(output_path)
-                    output_waveforms[-1] = out_waveform
-                    if sp_ret.stdout.strip():
-                        sox_dbg += f"\n--- SoX STDOUT ---\n{sp_ret.stdout}\n--- SoX STDOUT END ---\n"
-                    if sp_ret.stderr.strip():
-                        sox_dbg += f"\n--- SoX STDERR ---\n{sp_ret.stdout}\n--- SoX STDERR END ---\n"
-                except subprocess.CalledProcessError as e:
-                    raise RuntimeError(f"\n*** SoX Exception ***: {e.stderr}\n--- sox_debug ---\n{sox_dbg}\n--- soxdbgend ---\n\n")
+                if os.environ.get('TEST_MODE') == '1':
+                    sox_dbg += f"** TEST_MODE: Fake SoX apply (add noise). **\n"
+                    out_waveform = single_waveform + 0.01 * torch.rand_like(single_waveform)
+                    out_waveform = torch.clamp(out_waveform, -1.0, 1.0)
+                    sp_ret = type('FakeResult', (), {'returncode': 0, 'stdout': '', 'stderr': ''})()
+                else:
+                    try:
+                        sp_ret = subprocess.run(cmd, capture_output=True, check=False, text=True)
+                        if sp_ret.returncode != 0:
+                            sox_dbg += f"** SoX cmd executed: {shlex.join(cmd)}\n"
+                            sox_dbg += f"** SoX cmd failed (rc={sp_ret.returncode}); skipping render. **\n"
+                        out_waveform, _ = torchaudio.load(output_path)
+                        output_waveforms[-1] = out_waveform
+                        if sp_ret.stdout.strip():
+                            sox_dbg += f"\n--- SoX STDOUT ---\n{sp_ret.stdout}\n--- SoX STDOUT END ---\n"
+                        if sp_ret.stderr.strip():
+                            sox_dbg += f"\n--- SoX STDERR ---\n{sp_ret.stderr}\n--- SoX STDERR END ---\n"
+                    except subprocess.CalledProcessError as e:
+                        raise RuntimeError(f"\n*** SoX Exception ***: {e.stderr}\n--- sox_debug ---\n{sox_dbg}\n--- soxdbgend ---\n\n")
                 sox_dbg += f"\n - sox effects successfully applied to audio.\n"
                 sox_dbg += f"\n - sox cmd executed: {shlex.join(cmd)}\n"
             else:
@@ -441,6 +471,30 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             - 'yrange': y-axis limits [min, max] or None  
             - 'step': step size or None (extracted from xrange/samples)
         """
+        if os.environ.get('TEST_MODE') == '1':
+            results = []
+            for effect_info in plottable_effects:
+                formula_data = {
+                    'effect': effect_info['effect'],
+                    'args': effect_info['args'],
+                    'title': f"Test {effect_info['effect']}",
+                    'x_label': 'Frequency (Hz)',
+                    'y_label': 'Amplitude Response (dB)',
+                    'logscale': 'x',
+                    'samples': '250',
+                    'fs': float(sample_rate),
+                    'H': f"H(f)=1",
+                    'coeffs': "b0=1; a1=0",
+                    'formula': 'H(f)=1',
+                    'xrange': '[f=10:Fs/2]',
+                    'yrange': '[-60:0]',
+                    'step': None,
+                    'gnuplot_script': '# fake',
+                    'data': None,
+                }
+                results.append(formula_data)
+            return results
+
         results = []
         output_path = tempfile.mktemp(suffix='.wav')
 

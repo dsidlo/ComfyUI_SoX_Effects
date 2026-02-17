@@ -353,11 +353,14 @@ pause -1 'Hit return to continue'"""
     assert "b0_1=" in single_combined
 
 
-def test_sox_apply_effects_plot(mock_audio):
+def test_sox_apply_effects_plot(mock_audio, monkeypatch):
     """
     Test SoxApplyEffects with enable_sox_plot=True.
     Verifies audio passthrough/processing, IMAGE output structure, and no crash.
     """
+    import os
+    os.environ['TEST_MODE'] = '1'
+
     cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
     
     # Parse input types

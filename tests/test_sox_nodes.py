@@ -394,59 +394,47 @@ def test_sox_apply_effects_plot(mock_audio):
     
     # Case 1: enable_apply=False (passthrough audio, plot from params)
     kwargs['enable_apply'] = False
-    try:
-        outputs = node.apply_effects(**kwargs)
-        assert outputs is not None
-        assert len(outputs) == 3
-        processed_audio, sox_plot_image, dbg_text = outputs
-        
-        # Audio should be passed through unchanged
-        assert torch.equal(processed_audio['waveform'], kwargs['audio']['waveform'])
-        assert processed_audio['sample_rate'] == kwargs['audio']['sample_rate']
-        
-        # sox_plot_image should be a valid IMAGE tensor
-        assert isinstance(sox_plot_image, torch.Tensor)
-        assert sox_plot_image.shape[0] == 1  # Batch size 1
-        assert sox_plot_image.shape[3] == 3  # RGB
-        assert sox_plot_image.dtype == torch.uint8
-        
-        # Basic check: not all zeros (even if no sox, should have some content or blank but structured)
-        assert not torch.all(sox_plot_image == 0)
-        
-        # dbg_text should contain plot info
-        assert 'SoX Plot cmd' in dbg_text or 'plot skipped' in dbg_text
-    except subprocess.CalledProcessError:
-        # If sox not available, still check structure (graceful)
-        pytest.xfail("SoX not available; plot generation skipped but structure checked")
-    except Exception as e:
-        pytest.xfail(f"SoxApplyEffects plot mode (no apply) fails: {str(e)[:100]}")
+    outputs = node.apply_effects(**kwargs)
+    assert outputs is not None
+    assert len(outputs) == 3
+    processed_audio, sox_plot_image, dbg_text = outputs
+    
+    # Audio should be passed through unchanged
+    assert torch.equal(processed_audio['waveform'], kwargs['audio']['waveform'])
+    assert processed_audio['sample_rate'] == kwargs['audio']['sample_rate']
+    
+    # sox_plot_image should be a valid IMAGE tensor
+    assert isinstance(sox_plot_image, torch.Tensor)
+    assert sox_plot_image.shape[0] == 1  # Batch size 1
+    assert sox_plot_image.shape[3] == 3  # RGB
+    assert sox_plot_image.dtype == torch.uint8
+    
+    # Basic check: not all zeros (even if no sox, should have some content or blank but structured)
+    assert not torch.all(sox_plot_image == 0)
+    
+    # dbg_text should contain plot info
+    assert 'SoX Plot cmd' in dbg_text or 'plot skipped' in dbg_text
     
     # Case 2: enable_apply=True (process audio + plot from params)
     kwargs['enable_apply'] = True
-    try:
-        outputs = node.apply_effects(**kwargs)
-        assert outputs is not None
-        assert len(outputs) == 3
-        processed_audio, sox_plot_image, dbg_text = outputs
-        
-        # Audio should be processed (not equal to input, assuming sox_params has effect)
-        assert not torch.equal(processed_audio['waveform'], kwargs['audio']['waveform'])
-        assert processed_audio['sample_rate'] == kwargs['audio']['sample_rate']
-        
-        # sox_plot_image should be a valid IMAGE tensor (plot from params, independent of apply)
-        assert isinstance(sox_plot_image, torch.Tensor)
-        assert sox_plot_image.shape[0] == 1  # Batch size 1
-        assert sox_plot_image.shape[3] == 3  # RGB
-        assert sox_plot_image.dtype == torch.uint8
-        
-        # Basic check: not all zeros
-        assert not torch.all(sox_plot_image == 0)
-        
-        # dbg_text should contain both apply and plot info
-        assert 'SoX cmd executed' in dbg_text  # From apply
-        assert 'SoX Plot cmd' in dbg_text  # From plot
-        
-    except subprocess.CalledProcessError:
-        pytest.xfail("SoX not available; processing/plot skipped but structure checked")
-    except Exception as e:
-        pytest.xfail(f"SoxApplyEffects plot mode (with apply) fails: {str(e)[:100]}")
+    outputs = node.apply_effects(**kwargs)
+    assert outputs is not None
+    assert len(outputs) == 3
+    processed_audio, sox_plot_image, dbg_text = outputs
+    
+    # Audio should be processed (not equal to input, assuming sox_params has effect)
+    assert not torch.equal(processed_audio['waveform'], kwargs['audio']['waveform'])
+    assert processed_audio['sample_rate'] == kwargs['audio']['sample_rate']
+    
+    # sox_plot_image should be a valid IMAGE tensor (plot from params, independent of apply)
+    assert isinstance(sox_plot_image, torch.Tensor)
+    assert sox_plot_image.shape[0] == 1  # Batch size 1
+    assert sox_plot_image.shape[3] == 3  # RGB
+    assert sox_plot_image.dtype == torch.uint8
+    
+    # Basic check: not all zeros
+    assert not torch.all(sox_plot_image == 0)
+    
+    # dbg_text should contain both apply and plot info
+    assert 'SoX cmd executed' in dbg_text  # From apply
+    assert 'SoX Plot cmd' in dbg_text  # From plot

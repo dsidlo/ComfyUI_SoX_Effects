@@ -138,9 +138,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 plot_dbg += f"\n** Start: SoX Plots Requested **\n"
                 plottable_effects = self.get_plottable_effects(sox_cmd_params)
                 plot_dbg += f"-- SoX Plots: Got plottable effects: {plottable_effects} \n"
-                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=input_path)
+                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=input_path, final_net_response=final_net_response)
                 plot_dbg += f"-- SoX Plots: Get Sox Plot Formulae\n"
-                gnu_plot_script = generate_combined_script(gnu_formulas)
+                gnu_plot_script = generate_combined_script(gnu_formulas, output_fs=sample_rate)
                 plot_dbg += f"-- SoX Plots: Combining plot formulas\n"
                 # Output gnu_plot_script to temp file
                 temp_gnu = tempfile.NamedTemporaryFile(suffix=".gnu", delete=False)
@@ -456,12 +456,17 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 
                 try:
                     result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
-                    gnuplot_script = generate_combined_script(gnu_formulas, output_fs=sample_rate)
+                    if result.returncode == 0 and result.stdout.strip():
+                        gnuplot_script = result.stdout
+                    else:
+                        gnuplot_script = ""
                     
                     # Parse the gnuplot script
                     formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
                     formula_data['effect'] = effect_name
                     formula_data['args'] = args
+                    if result.returncode != 0:
+                        formula_data['error'] = result.stderr or "SoX --plot failed"
                     results.append(formula_data)
                 except Exception as e:
                     # If SoX fails for this effect, still include it with error info
@@ -473,7 +478,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
         # Add the final_net_response entry if requested
         if final_net_response:
-            results = add_final_net_response(results)
+            results = add_final_net_response(results, fs=sample_rate)
 
         if synthetic_created:
             try:
@@ -633,18 +638,18 @@ def generate_combined_script (formula_data_list, output_fs=48000,
 
     return "\n".join(script_parts)
 
-def add_final_net_response(plottable_effects, fs=48000):
+def add_final_net_response(effects_list, fs=48000):
     """
     Appends a synthetic 'final_net_response' entry to the list.
     Assumes all entries are frequency-response effects (have 'H' key).
     Ignores compand/mcompand style entries (those with 'data').
     """
     # Filter only entries that have a valid H(f) formula
-    filter_effects = [d for d in plottable_effects if d.get('H') and d.get('fs')]
+    filter_effects = [d for d in effects_list if d.get('H') and d.get('fs')]
 
     if not filter_effects:
         print("No frequency-response effects found → cannot create net response")
-        return plottable_effects
+        return effects_list
 
     # Build the combined H expression
     if len(filter_effects) == 1:
@@ -679,8 +684,8 @@ def add_final_net_response(plottable_effects, fs=48000):
         'data':         None              # not a transfer-curve type
     }
 
-    plottable_effects.append(net_entry)
-    return plottable_effects
+    effects_list.append(net_entry)
+    return effects_list
 
 
 class SoxAllpassNode:

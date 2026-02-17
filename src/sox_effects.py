@@ -138,9 +138,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 plot_dbg += f"\n** Start: SoX Plots Requested **\n"
                 plottable_effects = self.get_plottable_effects(sox_cmd_params)
                 plot_dbg += f"-- SoX Plots: Got plottable effects: {plottable_effects} \n"
-                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=input_path, final_net_response=final_net_response)
+                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=input_path)
                 plot_dbg += f"-- SoX Plots: Get Sox Plot Formulae\n"
-                gnu_plot_script = SoxApplyEffectsNode.generate_combined_script(gnu_formulas, output_fs=sample_rate)
+                gnu_plot_script = SoxApplyEffectsNode.generate_combined_script(gnu_formulas, output_fs=sample_rate, final_net_response=final_net_response)
                 plot_dbg += f"-- SoX Plots: Combining plot formulas\n"
                 # Output gnu_plot_script to temp file
                 temp_gnu = tempfile.NamedTemporaryFile(suffix=".gnu", delete=False)
@@ -398,7 +398,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         return plottable_effects
 
     @staticmethod
-    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None, final_net_response=False):
+    def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None):
 
         """
         Generate gnuplot formulas for each plottable effect by running SoX --plot.
@@ -410,7 +410,6 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         Args:
             plottable_effects: List of dicts from get_plottable_effects()
             sample_rate: Sample rate for the dummy audio file (default 44100)
-            final_net_response: If True, adds a net_response entry with combined formula.
             
         Returns:
             List of dicts containing:
@@ -469,10 +468,6 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     formula_data['args'] = args
                     formula_data['error'] = str(e)
                     results.append(formula_data)
-
-        # Add the final_net_response entry if requested
-        if final_net_response:
-            results = SoxApplyEffectsNode.add_final_net_response(results, fs=sample_rate)
 
         if synthetic_created:
             try:
@@ -567,11 +562,14 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         return formula_data
 
     @staticmethod
-    def generate_combined_script (formula_data_list, output_fs=48000,
+    def generate_combined_script(formula_data_list, output_fs=48000, final_net_response=False,
                                       x_range="[f=20:20000]", y_range="[-60:30]"):
         """
         Generate a combined .gnu script from a list of formula_data dicts.
         Assumes frequency-response plots; standardizes Fs and ranges.
+
+        If final_net_response=True and there are effects, appends a combined net response curve
+        using the product of all H_i(f) transfer functions (20*log10(product H_i(f))).
 
         Note: This script does not make use of the "o" Angular Frequency, as it is only needed
               when wildly different sample rate are involved.
@@ -599,19 +597,6 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         # Per-effect definitions (renamed to avoid conflicts)
         plot_expressions = []
         for i, data in enumerate(formula_data_list, start=1):
-            if data.get('effect') == 'net_response':
-                script_parts.append(f"# Net Response: {data['title']}")
-                # Build product of previous H_k(f)
-                num_prev = i - 1
-                if num_prev == 0:
-                    continue  # No effects, skip net
-                product = " * ".join(f"H{k}(f)" for k in range(1, i))
-                curve_expr = f"20*log10({product})"
-                title = data.get('title', 'Combined Net Response')
-                color = f"lc {i % 8 or 8}"
-                plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
-                continue
-
             if data.get('H'):  # Skip if no formula (e.g., compand)
                 if data.get('coeffs'):
                     renamed_coeffs = re.sub(r'([ab][0-2])=([^; ]+)', lambda m: f"{m.group(1)}_{i}={m.group(2)}", data['coeffs'])
@@ -625,6 +610,15 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             # Pleasing colors: cycle through rgb or linetype (lt) 1-8
             color = f"lc {i % 8 or 8}"  # Or lc rgb '#FF0000' for red, etc.
             title = data.get('title', f'Effect {i}')
+            plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
+
+        # Append net response if requested and there are effects
+        if final_net_response and len(formula_data_list) > 0:
+            num_effects = len(formula_data_list)
+            product = " * ".join(f"H{k}(f)" for k in range(1, num_effects + 1))
+            curve_expr = f"20*log10({product})"
+            title = 'Combined Net Response'
+            color = f"lc {(num_effects + 1) % 8 or 8} lw 3"  # Thicker for net
             plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
 
         # Plot command
@@ -642,45 +636,6 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
         return "\n".join(script_parts)
 
-    @staticmethod
-    def add_final_net_response(effects_list, fs=48000):
-        """
-        Appends a synthetic 'final_net_response' entry to the list.
-        Assumes all entries are frequency-response effects (have 'H' key).
-        Ignores compand/mcompand style entries (those with 'data').
-        """
-        # Filter only entries that have a valid H(f) formula
-        filter_effects = [d for d in effects_list if d.get('H') and d.get('fs')]
-
-        if not filter_effects:
-            print("No frequency-response effects found → cannot create net response")
-            return effects_list
-
-        # Use the first effect's metadata as base, or defaults
-        first = filter_effects[0]
-
-        if len(filter_effects) == 1:
-            net_formula = filter_effects[0]['formula']
-        else:
-            product_terms = [eff['formula'] for eff in filter_effects]
-            net_formula = " * ".join(product_terms)
-
-        net_entry = {
-            'effect': 'net_response',
-            'title': 'Combined Net Response',
-            'formula': net_formula,
-            'gnuplot_script': None,           # synthetic
-            'x_label':      first.get('x_label', 'Frequency (Hz)'),
-            'y_label':      first.get('y_label', 'Gain (dB)'),
-            'logscale':     first.get('logscale', 'x'),
-            'samples':      first.get('samples', 500),
-            'plot_curve':   None,
-            'fs':           fs,               # standardized
-            'data':         None              # not a transfer-curve type
-        }
-
-        effects_list.append(net_entry)
-        return effects_list
 
 
 class SoxAllpassNode:

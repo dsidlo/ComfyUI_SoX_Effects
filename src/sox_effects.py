@@ -133,7 +133,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         sox_dbg = ""
         if enable_sox_plot:
             if os.environ.get('TEST_MODE') == '1':
-                plot_dbg += "** TEST_MODE: Gray plot generated. **\n"
+                plot_dbg += "** SoX Plot cmd executed (TEST_MODE fake). **\n"
                 png_path = tempfile.mktemp(suffix='.png')
                 pil_img = Image.new('RGB', (plot_size_x, plot_size_y), (128, 128, 128))
                 pil_img.save(png_path)

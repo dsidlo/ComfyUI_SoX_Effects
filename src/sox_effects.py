@@ -147,12 +147,14 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 temp_gnu.write(gnu_plot_script.encode())
                 temp_gnu.close()
                 # Create a tmp png file
-                temp_png_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                png_path = temp_png_file.name
-                e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{temp_png_file.name}'"
+                png_path = tempfile.mktemp(suffix='.png')
+                e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{png_path}'"
                 gnu_plot_cmd = ['gnuplot', '-e', e_param, temp_gnu.name]
                 plot_dbg += f"-- SoX Plots Cmd: {shlex.join(gnu_plot_cmd)}\n"
                 result = subprocess.run(gnu_plot_cmd, capture_output=True, check=False, text=True)
+                success = result.returncode == 0
+                plot_dbg += f"Gnuplot rc: {result.returncode}, stdout len: {len(result.stdout)}"
+                if result.stderr: plot_dbg += f" Gnuplot stderr: {result.stderr[:200]}..."
                 plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
                 if result.stdout.strip():
                     plot_dbg += f"\n--- Sox Plot: STDOUT ---\n{result.stdout.strip()}\n--- Sox Plot:  STDOUT END ---\n"
@@ -194,33 +196,35 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                             next_seq = max(nums, default=0) + 1
                             filename = f"{filename_prefix}_{next_seq:04d}.png"
                             full_save_path = os.path.join(dir_path, filename)
-                            shutil.copy2(temp_png_file.name, full_save_path)
+                            shutil.copy2(png_path, full_save_path)
                             plot_dbg += f"-- Sox Plot:  filename: {filename}  full_save_path: {full_save_path}\n"
                             plot_dbg += f"--> Sox Plot: ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
                 else:
                     plot_dbg += "-- Sox Plot: Save skipped: save_sox_plot=False.\n"
 
-                if result.returncode == 0:
-                    # Load PNG as IMAGE tensor
-                    plot_dbg += f"-- Sox Plot: Opening Rendered Image ({temp_png_file.name})..."
-                    pil_img = Image.open(temp_png_file.name).convert("RGB")
-                    img_array = np.array(pil_img)
-                    sox_plot_image = torch.from_numpy(img_array).float().unsqueeze(0) / 255.0
-                    plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
-                    plot_dbg += "==> ...Rendered Image is good."
+                if success:
+                    try:
+                        pil_img = Image.open(png_path).convert("RGB")
+                        img_array = np.array(pil_img)
+                        sox_plot_image = torch.from_numpy(img_array).float().unsqueeze(0) / 255.0
+                        plot_dbg += " Plot image loaded successfully."
+                    except Exception as e:
+                        plot_dbg += f" Image load failed: {e}"
+                        sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
                 else:
-                    plot_dbg += f"-- *** SoX Plot: cmd failed (rc={result.returncode}); skipping render. **\n"
-                    plot_dbg += f"-- Sox Plot: ** gnuplot failed: STDERR follows... **\n--- gnuplot stderr start ---\n{result.stderr}\n--- gnuplot stderr end ---\n"
+                    sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
+                    plot_dbg += " Gnuplot failed, using blank image."
 
                 # Cleanup temp files
                 try:
                     os.remove(temp_gnu.name)
                 except OSError:
                     pass
-                try:
-                    os.remove(temp_png_file.name)
-                except OSError:
-                    pass
+                if success: 
+                    try:
+                        os.remove(png_path)
+                    except OSError:
+                        pass
 
                 plot_dbg += f"** End: SoX Plots Requested **\n\n"
         for i in range(waveform.shape[0]):

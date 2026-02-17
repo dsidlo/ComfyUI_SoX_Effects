@@ -136,9 +136,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
                 plot_dbg += f"\n** Start: SoX Plots Requested **\n"
-                plottable_effects = get_plottable_effects(params)
+                plottable_effects = self.get_plottable_effects(sox_cmd_params)
                 plot_dbg += f"-- SoX Plots: Got plottable effects: {plottable_effects} \n"
-                gnu_formulas = get_gnuplot_formulas(plottable_effects)
+                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=input_path)
                 plot_dbg += f"-- SoX Plots: Get Sox Plot Formulae\n"
                 gnu_plot_script = generate_combined_script(gnu_formulas)
                 plot_dbg += f"-- SoX Plots: Combining plot formulas\n"
@@ -668,7 +668,7 @@ def add_final_net_response(plottable_effects, fs=48000):
 
     # Build the combined H expression
     combined_h = " * ".join(
-        f"abs({d['H'].split('=',1)[1].strip()})"   # take right side of H(f)=...
+        f"abs({d['H']})"   # take right side of H(f)=...
         for d in filter_effects
     )
 

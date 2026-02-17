@@ -282,7 +282,6 @@ plot [10:22050] sin(x)
                             sox_dbg += f"** SoX cmd executed: {shlex.join(cmd)}\n"
                             sox_dbg += f"** SoX cmd failed (rc={sp_ret.returncode}); skipping render. **\n"
                         out_waveform, _ = torchaudio.load(output_path)
-                        output_waveforms[-1] = out_waveform
                         if sp_ret.stdout.strip():
                             sox_dbg += f"\n--- SoX STDOUT ---\n{sp_ret.stdout}\n--- SoX STDOUT END ---\n"
                         if sp_ret.stderr.strip():
@@ -291,6 +290,7 @@ plot [10:22050] sin(x)
                         raise RuntimeError(f"\n*** SoX Exception ***: {e.stderr}\n--- sox_debug ---\n{sox_dbg}\n--- soxdbgend ---\n\n")
                 sox_dbg += f"\n - sox effects successfully applied to audio.\n"
                 sox_dbg += f"\n - sox cmd executed: {shlex.join(cmd)}\n"
+                output_waveforms[-1] = out_waveform
             else:
                 sox_dbg += f"\n*** SoxApplyEffectsNode NOT Enabled ***: Audio Effects not applied.\n"
 

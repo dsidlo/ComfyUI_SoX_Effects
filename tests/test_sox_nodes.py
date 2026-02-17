@@ -101,6 +101,9 @@ def test_process_defaults(node_name, mock_audio):
             for key, value in outputs.items():
                 assert value is not None, f"Output {key} is None for {node_name}"
     except Exception as e:
+        if node_name == 'SoxApplyEffects':
+            # Should now pass with empty sox_params
+            raise
         pytest.xfail(f"{node_name} defaults fail: {str(e)[:100]}")
 
 

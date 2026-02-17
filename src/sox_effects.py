@@ -656,8 +656,9 @@ def add_final_net_response(plottable_effects, fs=48000):
 
     net_entry = {
         'effect': 'net_response',
+        'title': 'Combined Net Response',
+        'formula': filter_effects[0]['formula'] if len(filter_effects)==1 else " * ".join(f"abs({d['H']})" for d in filter_effects),
         'gnuplot_script': None,           # synthetic
-        'title':        'Combined Net Response',
         'x_label':      first.get('x_label', 'Frequency (Hz)'),
         'y_label':      first.get('y_label', 'Gain (dB)'),
         'logscale':     first.get('logscale', 'x'),

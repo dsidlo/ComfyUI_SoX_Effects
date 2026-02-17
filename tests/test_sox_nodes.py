@@ -41,9 +41,10 @@ def parse_input_types(cls):
         if category in input_types:
             for name, spec in input_types[category].items():
                 opts = {}
-                if isinstance(spec, tuple) and len(spec) > 1:
+                if isinstance(spec, tuple):
                     type_str = spec[0]
-                    opts = spec[1] if isinstance(spec[1], dict) else {}
+                    if len(spec) > 1:
+                        opts = spec[1] if isinstance(spec[1], dict) else {}
                 else:
                     type_str = spec
                 params[name] = {'type': type_str, **opts}

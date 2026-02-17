@@ -160,12 +160,6 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     plot_dbg += f"\n--- Sox Plot: STDOUT ---\n{result.stdout.strip()}\n--- Sox Plot:  STDOUT END ---\n"
                 if result.stderr.strip():
                     plot_dbg += f"\n--- Sox Plot:  STDERR ---\n{result.stderr.strip()}\n--- Sox Plot: STDERR END ---\n"
-                # Filter out 'pause ' lines before saving
-                lines = [line for line in result.stdout.splitlines() if not line.strip().startswith('pause ')]
-                filtered_content = '\n'.join(lines) + '\n'
-                plot_dbg += f"-- Sox Plot: Final gnuplot file: {temp_gnu.name}\n"
-                with open(temp_gnu.name, 'w') as f:
-                    f.write(filtered_content)
                 plot_dbg += f"-- Sox Plot: Gnuplot script generated: {temp_gnu.name}\n--- script start---\n{gnu_plot_script}\n--- script end---\n\n"
                 # Save if requested (incremental, like spectrogram)
                 if save_sox_plot:
@@ -612,7 +606,7 @@ def generate_combined_script (formula_data_list, output_fs=48000,
                 continue  # No effects, skip net
             product = " * ".join(f"H{k}(f)" for k in range(1, i))
             curve_expr = f"20*log10({product})"
-            title = data.get('title', 'Net Response')
+            title = data.get('title', 'Combined Net Response')
             color = f"lc {i % 8 or 8}"
             plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
             continue

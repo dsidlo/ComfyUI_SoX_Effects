@@ -132,11 +132,20 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         plot_dbg = ""
         sox_dbg = ""
         if enable_sox_plot:
-            if not sox_cmd_params:
-                plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
+            if os.environ.get('TEST_MODE') == '1':
+                plot_dbg += "** TEST_MODE: Gray plot generated. **\n"
+                png_path = tempfile.mktemp(suffix='.png')
+                pil_img = Image.new('RGB', (plot_size_x, plot_size_y), (128, 128, 128))
+                pil_img.save(png_path)
+                img_array = np.array(pil_img)
+                sox_plot_image = (torch.from_numpy(img_array).to(torch.float32) / 255.0).unsqueeze(0)
+                plot_script_path = None
             else:
-                plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
-                plot_dbg += f"** SoX Plot cmd executed: {shlex.join(plot_cmd)}\n"
+                if not sox_cmd_params:
+                    plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
+                else:
+                    plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
+                    plot_dbg += f"** SoX Plot cmd executed: {shlex.join(plot_cmd)}\n"
                 plot_script_path = tempfile.mktemp(suffix='.soxplot')
                 if os.environ.get('TEST_MODE') == '1':
                     plot_dbg += "** TEST_MODE: Fake plot generation. **\n"

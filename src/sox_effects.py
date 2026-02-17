@@ -406,6 +406,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
     @staticmethod
     def get_gnuplot_formulas(plottable_effects, sample_rate=44100, wave_file: Optional[str] = None):
+
         """
         Generate gnuplot formulas for each plottable effect by running SoX --plot.
         

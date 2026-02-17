@@ -174,67 +174,68 @@ plot [10:22050] sin(x)
                     f.write(filtered_content)
                 plot_dbg += f"Plot script generated: {plot_script_path}\n--- script start---\n{filtered_content}\n--- script end---\n\n"
                 # Render to PNG
-                png_path = tempfile.mktemp(suffix='.png')
-                plot_dbg += "Calling: SoxNodeUtils.render_sox_plot_to_image()...\n"
-                render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(sox_plot_script_path=plot_script_path,
-                                                                                                   output_image=png_path,
-                                                                                                   x=plot_size_x, y=plot_size_y)
-                if os.environ.get('TEST_MODE') == '1':
-                    render_msg = None
-                    gnuplot_stdout = ''
-                    gnuplot_stderr = ''
-                if gnuplot_stdout.strip():
-                    plot_dbg += f"\n--- GNUPLOT STDOUT ---\n{gnuplot_stdout}\n--- GNUPLOT STDOUT END ---\n"
-                if gnuplot_stderr.strip():
-                    plot_dbg += f"\n--- GNUPLOT STDERR ---\n{gnuplot_stderr}\n--- GNUPLOT STDERR END ---\n"
-
-                # Save if requested (incremental, like spectrogram)
-                if save_sox_plot:
-                    plot_dbg += "---> Saving plot...\n"
-                    base_prefix = plot_file_prefix.strip()
-                    if not base_prefix:
-                        plot_dbg += "- Save skipped: Empty plot_file_prefix.\n"
-                    else:
-                        # The full dir path
-                        dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
-                        # Get filename prefix from plot_file_prefix
-                        filename_prefix = os.path.basename(base_prefix)
-                        plot_dbg += f"- base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
-                        os.makedirs(dir_path, exist_ok=True)
-                        pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
-                        nums = []
-                        # Collects existing sequence numbers from matching plot files
-                        try:
-                            for f in os.listdir(dir_path):
-                                plot_dbg += f"   - {f}\n"
-                                m = re.match(pattern, f)
-                                if m:
-                                    nums.append(int(m.group(1)))
-                        except OSError:
-                            pass
-                        next_seq = max(nums, default=0) + 1
-                        filename = f"{filename_prefix}_{next_seq:04d}.png"
-                        full_save_path = os.path.join(dir_path, filename)
-                        shutil.copy2(png_path, full_save_path)
-                        plot_dbg += f"- filename: {filename}  full_save_path: {full_save_path}\n"
-                        plot_dbg += f"--> ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
-                else:
-                    plot_dbg += "Save skipped: save_sox_plot=False.\n"
-
-                if render_msg is None:
-                    # Load PNG as IMAGE tensor
-                    plot_dbg += f"==> Opening Rendered Image ({png_path})..."
+                try:
+                    png_path = tempfile.mktemp(suffix='.png')
+                    plot_dbg += "Calling: SoxNodeUtils.render_sox_plot_to_image()...\n"
+                    render_msg, gnuplot_stdout, gnuplot_stderr = SoxNodeUtils.render_sox_plot_to_image(sox_plot_script_path=plot_script_path,
+                                                                                                       output_image=png_path,
+                                                                                                       x=plot_size_x, y=plot_size_y)
                     if os.environ.get('TEST_MODE') == '1':
-                        pil_img = Image.new('RGB', (plot_size_x, plot_size_y), color=(128, 128, 128))
+                        render_msg = None
+                        gnuplot_stdout = ''
+                        gnuplot_stderr = ''
+                    if gnuplot_stdout.strip():
+                        plot_dbg += f"\n--- GNUPLOT STDOUT ---\n{gnuplot_stdout}\n--- GNUPLOT STDOUT END ---\n"
+                    if gnuplot_stderr.strip():
+                        plot_dbg += f"\n--- GNUPLOT STDERR ---\n{gnuplot_stderr}\n--- GNUPLOT STDERR END ---\n"
+
+                    # Save if requested (incremental, like spectrogram)
+                    if save_sox_plot:
+                        plot_dbg += "---> Saving plot...\n"
+                        base_prefix = plot_file_prefix.strip()
+                        if not base_prefix:
+                            plot_dbg += "- Save skipped: Empty plot_file_prefix.\n"
+                        else:
+                            # The full dir path
+                            dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
+                            # Get filename prefix from plot_file_prefix
+                            filename_prefix = os.path.basename(base_prefix)
+                            plot_dbg += f"- base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
+                            os.makedirs(dir_path, exist_ok=True)
+                            pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
+                            nums = []
+                            # Collects existing sequence numbers from matching plot files
+                            try:
+                                for f in os.listdir(dir_path):
+                                    plot_dbg += f"   - {f}\n"
+                                    m = re.match(pattern, f)
+                                    if m:
+                                        nums.append(int(m.group(1)))
+                            except OSError:
+                                pass
+                            next_seq = max(nums, default=0) + 1
+                            filename = f"{filename_prefix}_{next_seq:04d}.png"
+                            full_save_path = os.path.join(dir_path, filename)
+                            shutil.copy2(png_path, full_save_path)
+                            plot_dbg += f"- filename: {filename}  full_save_path: {full_save_path}\n"
+                            plot_dbg += f"--> ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
                     else:
-                        pil_img = Image.open(png_path).convert("RGB")
-                    img_array = np.array(pil_img)
-                    sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
-                    plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
-                    plot_dbg += "==> ...Rendered Image is good."
-                else:
-                    sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8)
-                    plot_dbg += f"** gnuplot failed: STDERR follows... **\n--- gnuplot stderr start ---\n{gnuplot_stderr}\n--- gnuplot stderr end ---\n"
+                        plot_dbg += "Save skipped: save_sox_plot=False.\n"
+
+                    if render_msg is None:
+                        # Load PNG as IMAGE tensor
+                        plot_dbg += f"==> Opening Rendered Image ({png_path})..."
+                        if os.environ.get('TEST_MODE') == '1':
+                            pil_img = Image.new('RGB', (plot_size_x, plot_size_y), color=(128, 128, 128))
+                        else:
+                            pil_img = Image.open(png_path).convert("RGB")
+                        img_array = np.array(pil_img)
+                        sox_plot_image = torch.from_numpy(img_array).unsqueeze(0).to(torch.uint8)  # [1, H, W, 3]
+                        plot_dbg += f"gnuplot IMAGE ready ({plot_size_x}x{plot_size_y} PNG).\n"
+                        plot_dbg += "==> ...Rendered Image is good."
+                    else:
+                        sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8)
+                        plot_dbg += f"** gnuplot failed: STDERR follows... **\n--- gnuplot stderr start ---\n{gnuplot_stderr}\n--- gnuplot stderr end ---\n"
                 except Exception as e:
                     sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.uint8)
                     plot_dbg += f"*** Exception ***: gnuplot Render failed\n{str(e)}\n--- open_plot ---\n{plot_dbg}\n--- open_plot end ---\n\n"

@@ -459,27 +459,16 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                     
                     # Parse the gnuplot script
                     formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
-                    
-                    results.append({
-                        'effect': effect_name,
-                        'args': args,
-                        'gnuplot_script': formula_data.get('gnuplot_script', ''),
-                        'gnuplot_formula': formula_data.get('formula', ''),
-                        'xrange': formula_data.get('xrange'),
-                        'yrange': formula_data.get('yrange'),
-                        'step': formula_data.get('step')
-                    })
+                    formula_data['effect'] = effect_name
+                    formula_data['args'] = args
+                    results.append(formula_data)
                 except Exception as e:
                     # If SoX fails for this effect, still include it with error info
-                    results.append({
-                        'effect': effect_name,
-                        'args': args,
-                        'gnuplot_formula': '',
-                        'xrange': None,
-                        'yrange': None,
-                        'step': None,
-                        'error': str(e)
-                    })
+                    formula_data = SoxApplyEffectsNode._parse_gnuplot_script('')
+                    formula_data['effect'] = effect_name
+                    formula_data['args'] = args
+                    formula_data['error'] = str(e)
+                    results.append(formula_data)
         if synthetic_created:
             try:
                 os.remove(input_path)

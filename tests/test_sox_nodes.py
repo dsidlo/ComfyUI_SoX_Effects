@@ -163,7 +163,7 @@ def test_get_gnuplot_formulas():
     for result in results:
         assert 'effect' in result
         assert 'args' in result
-        assert 'gnuplot_formula' in result
+        assert 'formula' in result
         assert 'xrange' in result
         assert 'yrange' in result
         assert 'step' in result
@@ -174,7 +174,7 @@ def test_get_gnuplot_formulas():
         # If SoX is available and succeeded, check that we got a formula
         if 'error' not in result:
             # Formula should be a non-empty string or at least None/empty handled
-            assert isinstance(result['gnuplot_formula'], str)
+            assert isinstance(result['formula'], str)
             # xrange should be a list or None
             if result['xrange'] is not None:
                 assert isinstance(result['xrange'], str)

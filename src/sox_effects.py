@@ -278,17 +278,19 @@ plot [10:22050] sin(x)
                 else:
                     try:
                         sp_ret = subprocess.run(cmd, capture_output=True, check=False, text=True)
-                        if sp_ret.returncode != 0:
-                            sox_dbg += f"** SoX cmd executed: {shlex.join(cmd)}\n"
-                            sox_dbg += f"** SoX cmd failed (rc={sp_ret.returncode}); skipping render. **\n"
-                        out_waveform, _ = torchaudio.load(output_path)
+                        sox_dbg += f"** SoX cmd executed: {shlex.join(cmd)}\n"
+                        if sp_ret.returncode == 0:
+                            out_waveform, _ = torchaudio.load(output_path)
+                            sox_dbg += f"\n - sox effects successfully applied to audio.\n"
+                        else:
+                            out_waveform = single_waveform
+                            sox_dbg += f"** SoX cmd failed (rc={sp_ret.returncode}); audio passed through. **\n"
                         if sp_ret.stdout.strip():
                             sox_dbg += f"\n--- SoX STDOUT ---\n{sp_ret.stdout}\n--- SoX STDOUT END ---\n"
                         if sp_ret.stderr.strip():
                             sox_dbg += f"\n--- SoX STDERR ---\n{sp_ret.stderr}\n--- SoX STDERR END ---\n"
                     except subprocess.CalledProcessError as e:
                         raise RuntimeError(f"\n*** SoX Exception ***: {e.stderr}\n--- sox_debug ---\n{sox_dbg}\n--- soxdbgend ---\n\n")
-                sox_dbg += f"\n - sox effects successfully applied to audio.\n"
                 sox_dbg += f"\n - sox cmd executed: {shlex.join(cmd)}\n"
                 output_waveforms[-1] = out_waveform
             else:

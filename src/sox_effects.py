@@ -456,7 +456,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 
                 try:
                     result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
-                    if result.returncode == 0 and result.stdout.strip():
+                    if result.stdout.strip():
                         gnuplot_script = result.stdout
                     else:
                         gnuplot_script = ""
@@ -626,6 +626,8 @@ def generate_combined_script (formula_data_list, output_fs=48000,
         plot_expressions.append(f"{curve_expr} title '{data.get('title', f'Effect {i}')}' with lines {color}")
 
     # Plot command
+    if not plot_expressions:
+        plot_expressions.append("0 title 'No Effects (Flat 0 dB)' with lines lc rgb '#808080'")
     script_parts.append(f"plot {x_range} {y_range} \\")
     script_parts.append(", \\\n".join(plot_expressions))
 

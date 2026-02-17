@@ -616,7 +616,7 @@ def generate_combined_script (formula_data_list, output_fs=48000,
         renamed_coeffs = renamed_coeffs.replace('a1=', f'a1_{i}=').replace('a2=', f'a2_{i}=')
         renamed_h = data['H'].replace('b0', f'b0_{i}').replace('b1', f'b1_{i}').replace('b2', f'b2_{i}')
         renamed_h = renamed_h.replace('a1', f'a1_{i}').replace('a2', f'a2_{i}')
-        renamed_h = renamed_h.replace('H(f)=', f'H{i}(f)=')
+        renamed_h = f"H{i}(f)={renamed_h}"
 
         # Add to script
         script_parts.append(f"# Effect {i}: {data['title']}")
@@ -627,7 +627,7 @@ def generate_combined_script (formula_data_list, output_fs=48000,
         curve_expr = data['plot_curve'] or f"20*log10(H{i}(f))"
         # Pleasing colors: cycle through rgb or linetype (lt) 1-8
         color = f"lc {i}"  # Or lc rgb '#FF0000' for red, etc.
-        plot_expressions.append(f"{curve_expr} title '{data['title']}' with lines {color}")
+        plot_expressions.append(f"{curve_expr} title '{data.get('title', f'Effect {i}')}' with lines {color}")
 
     # Plot command
     script_parts.append(f"plot {x_range} {y_range} \\")

@@ -472,7 +472,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
         # Add the final_net_response entry if requested
         if final_net_response:
-            results = add_final_net_response(results, fs=sample_rate)
+            results = SoxApplyEffectsNode.add_final_net_response(results, fs=sample_rate)
 
         if synthetic_created:
             try:
@@ -613,20 +613,11 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 continue
 
             if data.get('H'):  # Skip if no formula (e.g., compand)
-                renamed_h = data['H'].replace(r'([a-z]\d+)', r'\1_{i}')
+                if data.get('coeffs'):
+                    renamed_coeffs = re.sub(r'([ab][0-2])=([^; ]+)', r'\\1_{i}=\\2', data['coeffs'])
+                    script_parts.append(renamed_coeffs + ';')
+                renamed_h = re.sub(r'([ab][0-2])', r'\\1_{i}', data['H'])
                 renamed_h = f"H{i}(f)={renamed_h}"
-                script_parts.append(renamed_h)
-                continue
-
-            if data.get('coeffs') is None:
-                # Normal effect: rename coefficients and H(f)
-                renamed_coeffs = ''
-                if data.get('coeffs') is not None:
-                    renamed_coeffs = data['coeffs'].replace(r'([a-z]\d+)=', r'\1_{i}=')
-                # Add to script
-                script_parts.append(f"# Effect {i}: {data['title']}")
-                if renamed_coeffs:
-                    script_parts.append(renamed_coeffs)
                 script_parts.append(renamed_h)
 
             # Plot expression (use parsed 'plot_curve' if available, else default)
@@ -651,7 +642,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
         return "\n".join(script_parts)
 
-    @classmethod
+    @staticmethod
     def add_final_net_response(effects_list, fs=48000):
         """
         Appends a synthetic 'final_net_response' entry to the list.

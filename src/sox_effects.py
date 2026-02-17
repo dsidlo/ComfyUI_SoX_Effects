@@ -137,6 +137,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             else:
                 plot_cmd = ['sox', '--plot', 'gnuplot', input_path, output_path] + sox_cmd_params
                 plot_dbg += f"** SoX Plot cmd executed: {shlex.join(plot_cmd)}\n"
+                plot_script_path = tempfile.mktemp(suffix='.soxplot')
                 if os.environ.get('TEST_MODE') == '1':
                     plot_dbg += "** TEST_MODE: Fake plot generation. **\n"
                     gnuplot_script = """# fake gnuplot script
@@ -149,7 +150,6 @@ plot [10:22050] sin(x)
 """
                 else:
                     # Run SoX --plot gnuplot input.wav output.wav [effects] to generate script (with temp files)
-                    plot_script_path = tempfile.mktemp(suffix='.soxplot')
                     try:
                         result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
                         if (enable_sox_plot is True and result.returncode != 2) or (enable_sox_plot is False and result.returncode != 0):

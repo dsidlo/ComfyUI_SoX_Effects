@@ -604,29 +604,44 @@ def generate_combined_script (formula_data_list, output_fs=48000,
     # Per-effect definitions (renamed to avoid conflicts)
     plot_expressions = []
     for i, data in enumerate(formula_data_list, start=1):
-        if not data['H']:  # Skip if no formula (e.g., compand)
+        if data.get('effect') == 'net_response':
+            script_parts.append(f"# Net Response: {data['title']}")
+            # Build product of previous H_k(f)
+            num_prev = i - 1
+            if num_prev == 0:
+                continue  # No effects, skip net
+            product = " * ".join(f"H{k}(f)" for k in range(1, i))
+            curve_expr = f"20*log10({product})"
+            title = data.get('title', 'Net Response')
+            color = f"lc {i % 8 or 8}"
+            plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
             continue
 
-        # Rename coefficients and H(f)
-        if data.get('coeffs') is None:
-            renamed_coeffs = ''
-        else:
+        if not data.get('H'):  # Skip if no formula (e.g., compand)
+            continue
+
+        # Normal effect: rename coefficients and H(f)
+        renamed_coeffs = ''
+        if data.get('coeffs') is not None:
             renamed_coeffs = data['coeffs'].replace('b0=', f'b0_{i}=').replace('b1=', f'b1_{i}=').replace('b2=', f'b2_{i}=')
             renamed_coeffs = renamed_coeffs.replace('a1=', f'a1_{i}=').replace('a2=', f'a2_{i}=')
+
         renamed_h = data['H'].replace('b0', f'b0_{i}').replace('b1', f'b1_{i}').replace('b2', f'b2_{i}')
         renamed_h = renamed_h.replace('a1', f'a1_{i}').replace('a2', f'a2_{i}')
         renamed_h = f"H{i}(f)={renamed_h}"
 
         # Add to script
         script_parts.append(f"# Effect {i}: {data['title']}")
-        script_parts.append(renamed_coeffs)
+        if renamed_coeffs:
+            script_parts.append(renamed_coeffs)
         script_parts.append(renamed_h)
 
         # Plot expression (use parsed 'plot_curve' if available, else default)
-        curve_expr = data['plot_curve'] or f"20*log10(H{i}(f))"
+        curve_expr = data.get('plot_curve') or f"20*log10(H{i}(f))"
         # Pleasing colors: cycle through rgb or linetype (lt) 1-8
-        color = f"lc {i}"  # Or lc rgb '#FF0000' for red, etc.
-        plot_expressions.append(f"{curve_expr} title '{data.get('title', f'Effect {i}')}' with lines {color}")
+        color = f"lc {i % 8 or 8}"  # Or lc rgb '#FF0000' for red, etc.
+        title = data.get('title', f'Effect {i}')
+        plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
 
     # Plot command
     if not plot_expressions:
@@ -656,36 +671,20 @@ def add_final_net_response(effects_list, fs=48000):
         print("No frequency-response effects found → cannot create net response")
         return effects_list
 
-    # Build the combined H expression
-    if len(filter_effects) == 1:
-        combined_h = filter_effects[0]['H']
-        net_formula = filter_effects[0]['formula']
-    else:
-        combined_h = " * ".join(
-            f"abs({d['H']})"   # take right side of H(f)=...
-            for d in filter_effects
-        )
-        net_formula = " * ".join(f"abs({d['H']})" for d in filter_effects)
-
-    # For dB plot we actually want the product inside 20*log10()
-    plot_expr = f"20*log10({combined_h})" if combined_h else None
-
     # Use the first effect's metadata as base, or defaults
     first = filter_effects[0]
 
     net_entry = {
         'effect': 'net_response',
         'title': 'Combined Net Response',
-        'formula': net_formula,
+        'formula': '20*log10(product of individual H_i(f))',
         'gnuplot_script': None,           # synthetic
         'x_label':      first.get('x_label', 'Frequency (Hz)'),
         'y_label':      first.get('y_label', 'Gain (dB)'),
         'logscale':     first.get('logscale', 'x'),
         'samples':      first.get('samples', 500),
-        'plot_curve':   plot_expr,        # ← this is what you'll use in plot
+        'plot_curve':   None,
         'fs':           fs,               # standardized
-        'H':            f"H_net(f) = {combined_h}",  # optional, for reference
-        'coeffs':       None,             # no individual coeffs
         'data':         None              # not a transfer-curve type
     }
 

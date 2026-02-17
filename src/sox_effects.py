@@ -427,6 +427,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             - 'step': step size or None (extracted from xrange/samples)
         """
         results = []
+        output_path = tempfile.mktemp(suffix='.wav')
 
         input_path = None
         synthetic_created = False
@@ -444,7 +445,6 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             except Exception as e:
                 raise RuntimeError(f"Failed to create synthetic input for plotting: {str(e)}")
 
-        output_path = tempfile.mktemp(suffix='.wav')
         cmd_base = ['sox', '--plot', 'gnuplot', input_path, output_path]
         for effect_info in plottable_effects:
                 effect_name = effect_info['effect']

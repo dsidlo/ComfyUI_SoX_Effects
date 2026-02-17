@@ -5,38 +5,28 @@ import tempfile
 import os
 from pathlib import Path
 
-project_root = Path(__file__).parent.parent.resolve()
-import sys
 import torch
 import torchaudio
 import tempfile
 import os
 import numpy as np
-sys.path.insert(0, str(project_root))
+from src.sox_effects import NODE_CLASS_MAPPINGS as effects_mappings
+from src.sox_voices import NODE_CLASS_MAPPINGS as voices_mappings
+from src.sox_utils import NODE_CLASS_MAPPINGS as utils_mappings
 
-@pytest.fixture
-def mock_audio():
-    return {
-        "waveform": torch.zeros((1, 1, 1024)),
-        "sample_rate": 22050
-    }
-
-node_list = [
-    'src.sox_effects',
-    'src.sox_voices',
-    'src.sox_utils',
-]
-
-NODE_CLASS_MAPPINGS = {}
-for module_name in node_list:
-    imported_module = importlib.import_module(module_name)
-    if hasattr(imported_module, 'NODE_CLASS_MAPPINGS'):
-        NODE_CLASS_MAPPINGS.update(imported_module.NODE_CLASS_MAPPINGS)
+NODE_CLASS_MAPPINGS = {**effects_mappings, **voices_mappings, **utils_mappings}
 
 node_names = [
     name for name, cls in NODE_CLASS_MAPPINGS.items()
     if hasattr(cls, 'INPUT_TYPES') and hasattr(cls, 'process')
 ]
+
+@pytest.fixture
+def mock_audio():
+    return {
+        'samples': torch.zeros(1, 44100),
+        'sampling_rate': 44100
+    }
 
 def parse_input_types(cls):
     '''
@@ -83,7 +73,12 @@ def test_process_defaults(node_name, mock_audio):
     for name, spec in params.items():
         type_ = spec['type']
         if 'audio' in name.lower():
-            kwargs[name] = mock_audio
+            # Map fixture keys to expected node format
+            audio = {
+                "waveform": mock_audio["samples"],
+                "sample_rate": mock_audio["sampling_rate"]
+            }
+            kwargs[name] = audio
         elif type_ == 'BOOLEAN':
             kwargs[name] = spec.get('default', False)
         elif type_ == 'FLOAT':
@@ -172,29 +167,29 @@ def test_get_gnuplot_formulas():
         
         results = cls.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=test_wav_path)
     
-    # Should return results for all effects
-    assert len(results) == 2
-    
-    # Check structure of each result
-    for result in results:
-        assert 'effect' in result
-        assert 'args' in result
-        assert 'gnuplot_formula' in result
-        assert 'xrange' in result
-        assert 'yrange' in result
-        assert 'step' in result
+        # Should return results for all effects
+        assert len(results) == 2
         
-        # Verify effect name is preserved
-        assert result['effect'] in ['highpass', 'bass']
-        
-        # If SoX is available and succeeded, check that we got a formula
-        if 'error' not in result:
-            # Formula should be a non-empty string or at least None/empty handled
-            assert isinstance(result['gnuplot_formula'], str)
-            # xrange should be a list or None
-            if result['xrange'] is not None:
-                assert isinstance(result['xrange'], list)
-                assert len(result['xrange']) == 2
+        # Check structure of each result
+        for result in results:
+            assert 'effect' in result
+            assert 'args' in result
+            assert 'gnuplot_formula' in result
+            assert 'xrange' in result
+            assert 'yrange' in result
+            assert 'step' in result
+            
+            # Verify effect name is preserved
+            assert result['effect'] in ['highpass', 'bass']
+            
+            # If SoX is available and succeeded, check that we got a formula
+            if 'error' not in result:
+                # Formula should be a non-empty string or at least None/empty handled
+                assert isinstance(result['gnuplot_formula'], str)
+                # xrange should be a list or None
+                if result['xrange'] is not None:
+                    assert isinstance(result['xrange'], list)
+                    assert len(result['xrange']) == 2
     
         # Test empty list
         assert cls.get_gnuplot_formulas([]) == []

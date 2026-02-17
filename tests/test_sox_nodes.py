@@ -10,7 +10,7 @@ import torchaudio
 import tempfile
 import os
 import numpy as np
-from src.sox_effects import NODE_CLASS_MAPPINGS as effects_mappings, generate_combined_script, SoxApplyEffectsNode
+from src.sox_effects import NODE_CLASS_MAPPINGS as effects_mappings, SoxApplyEffectsNode
 from src.sox_voices import NODE_CLASS_MAPPINGS as voices_mappings
 from src.sox_utils import NODE_CLASS_MAPPINGS as utils_mappings
 
@@ -297,8 +297,6 @@ pause -1 'Hit return to continue'"""
 
 def test_generate_combined_script():
     """Test generate_combined_script produces valid combined plot script."""
-    from src.sox_effects import SoX_EFFECTS,generate_combined_script
-
     cls = NODE_CLASS_MAPPINGS['SoxApplyEffects']
 
     highpass_script = """# gnuplot file
@@ -336,7 +334,7 @@ pause -1 'Hit return to continue'"""
     parsed_bass = cls._parse_gnuplot_script(bass_script)
 
     # Test with both (expect renamed H1/H2)
-    combined_script = generate_combined_script([parsed_hp, parsed_bass], output_fs=48000)
+    combined_script = SoxApplyEffectsNode.generate_combined_script([parsed_hp, parsed_bass], output_fs=48000)
     assert isinstance(combined_script, str)
     assert len(combined_script) > 500
     assert "# Combined SoX Effects Frequency Response" in combined_script
@@ -353,12 +351,12 @@ pause -1 'Hit return to continue'"""
     assert "pause -1 'Hit return to continue'" in combined_script
 
     # Test empty list (graceful)
-    empty_combined = generate_combined_script([])
+    empty_combined = SoxApplyEffectsNode.generate_combined_script([])
     assert "Combined SoX Effects" in empty_combined
     assert "plot" in empty_combined  # Still has plot command, empty
 
     # Test single (no rename)
-    single_combined = generate_combined_script([parsed_hp])
+    single_combined = SoxApplyEffectsNode.generate_combined_script([parsed_hp])
     assert "H1(f)=" in single_combined  # Still renames to _1
     assert "b0_1=" in single_combined
 

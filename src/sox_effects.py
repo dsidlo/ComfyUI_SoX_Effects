@@ -150,7 +150,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 png_path = tempfile.mktemp(suffix='.png')
                 e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{png_path}'"
                 gnu_plot_cmd = ['gnuplot', '-e', e_param, temp_gnu.name]
-                plot_dbg += f"-- SoX Plots Cmd: {shlex.join(gnu_plot_cmd)}\n"
+                plot_dbg += f"-- SoX Plot cmd: {shlex.join(gnu_plot_cmd)}\n"
                 result = subprocess.run(gnu_plot_cmd, capture_output=True, check=False, text=True)
                 success = result.returncode == 0
                 plot_dbg += f"Gnuplot rc: {result.returncode}, stdout len: {len(result.stdout)}"

@@ -6,10 +6,10 @@ import torch
 import torchaudio
 import numpy as np
 import re
-from typing import Optional
+import rich
 import shutil
+import json
 from typing import Optional
-
 from PIL import Image
 # Check if the program is being run by bytest
 if os.environ.get('PYTEST_VERSION'):
@@ -107,7 +107,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
     def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False,
                       final_net_response=False,
-                      plot_size_x=800, plot_size_y=400,
+                      plot_size_x=800, plot_size_y=600,
                       save_sox_plot=False, plot_file_prefix="sox_plot_images/sox_plot"):
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
@@ -133,46 +133,54 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         sox_dbg = ""
         if enable_sox_plot:
             if not sox_cmd_params:
-                plot_dbg += "** Plot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
+                plot_dbg += "** GnuPlot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
             else:
-                plot_dbg += f"\n** Start: SoX Plots Requested **\n"
+                plot_dbg += f"\n** Start: GnuPlot Requested **\n"
                 plottable_effects = self.get_plottable_effects(sox_cmd_params)
-                plot_dbg += f"-- SoX Plots: Got plottable effects: {plottable_effects} \n"
-                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate, wave_file=input_path)
-                plot_dbg += f"-- SoX Plots: Get Sox Plot Formulae\n"
-                gnu_plot_script = SoxApplyEffectsNode.generate_combined_script(gnu_formulas, output_fs=sample_rate, final_net_response=final_net_response)
-                plot_dbg += f"-- SoX Plots: Combining plot formulas\n"
+                plot_dbg += f"-- GnuPlot: Got plottable effects from pipeline: {json.dumps(plottable_effects, indent=3)}\n"
+                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate)
+                plot_dbg += f"-- GnuPlot: Got plot formulas from gnuplots: {json.dumps(gnu_formulas, indent=3)}\n"
+                print("-------------------- (apply_effects)")
+                print("--- plottable_effects ---")
+                print(json.dumps(plottable_effects))
+                print("--------------------")
+                gnu_plot_script = self.generate_combined_script(gnu_formulas, output_fs=sample_rate, final_net_response=final_net_response, x_plot=plot_size_x, y_plot=plot_size_y)
+                plot_dbg += f"-- GnuPlot: Combined gnuplot script: {gnu_plot_script}\n"
                 # Output gnu_plot_script to temp file
                 temp_gnu = tempfile.NamedTemporaryFile(suffix=".gnu", delete=False)
                 temp_gnu.write(gnu_plot_script.encode())
                 temp_gnu.close()
+                print("-------------------- (apply_effects)")
+                print(f"--- gnu_plot_script in [{temp_gnu.name}] ---")
+                print(gnu_plot_script)
+                print("--------------------")
                 # Create a tmp png file
                 png_path = tempfile.mktemp(suffix='.png')
-                e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{png_path}'"
-                gnu_plot_cmd = ['gnuplot', '-e', e_param, temp_gnu.name]
-                plot_dbg += f"-- SoX Plot cmd: {shlex.join(gnu_plot_cmd)}\n"
+                e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{png_path}'; load '{temp_gnu.name}'"
+                gnu_plot_cmd = ['gnuplot', '-e', e_param]
+                plot_dbg += f"--- GnuPlot: GnuPlot cmd: {shlex.join(gnu_plot_cmd)}\n"
                 result = subprocess.run(gnu_plot_cmd, capture_output=True, check=False, text=True)
-                success = result.returncode == 0
-                plot_dbg += f"Gnuplot rc: {result.returncode}, stdout len: {len(result.stdout)}"
-                if result.stderr: plot_dbg += f" Gnuplot stderr: {result.stderr[:200]}..."
-                plot_dbg += f"Plot script captured from audio cmd stdout ({len(result.stdout)} chars).\n"
-                if result.stdout.strip():
-                    plot_dbg += f"\n--- Sox Plot: STDOUT ---\n{result.stdout.strip()}\n--- Sox Plot:  STDOUT END ---\n"
-                if result.stderr.strip():
-                    plot_dbg += f"\n--- Sox Plot:  STDERR ---\n{result.stderr.strip()}\n--- Sox Plot: STDERR END ---\n"
-                plot_dbg += f"-- Sox Plot: Gnuplot script generated: {temp_gnu.name}\n--- script start---\n{gnu_plot_script}\n--- script end---\n\n"
+                gnuplot_success = result.returncode == 0
+                if gnuplot_success:
+                    plot_dbg += f"--- GnuPlot: Successful: return code: {result.returncode}\n"
+                else:
+                    plot_dbg += f"--- *** GnuPlot: Failed: return code: {result.returncode}\n"
+                    if result.stdout.strip():
+                        plot_dbg += f"\n--- GnuPlot: STDOUT ---\n{result.stdout.strip()}\n--- GnuPlot:  STDOUT END ---\n"
+                    if result.stderr.strip():
+                        plot_dbg += f"\n--- GnuPlot:  STDERR ---\n{result.stderr.strip()}\n--- GnuPlot: STDERR END ---\n"
                 # Save if requested (incremental, like spectrogram)
                 if save_sox_plot:
-                    plot_dbg += "---> Sox Plot: Saving plot...\n"
+                    plot_dbg += "---> GnuPlot: Saving plot...\n"
                     base_prefix = plot_file_prefix.strip()
                     if not base_prefix:
-                        plot_dbg += "-- Sox Plot: Save skipped: Empty plot_file_prefix.\n"
+                        plot_dbg += "-- GnuPlot: Save skipped: Empty plot_file_prefix.\n"
                     else:
                         # The full dir path
                         dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
                         # Get filename prefix from plot_file_prefix
                         filename_prefix = os.path.basename(base_prefix)
-                        plot_dbg += f"-- Sox Plot:  base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
+                        plot_dbg += f"-- GnuPlot:  base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
                         os.makedirs(dir_path, exist_ok=True)
                         pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
                         nums = []
@@ -184,43 +192,43 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                                 if m:
                                     nums.append(int(m.group(1)))
                         except OSError as e:
-                            plot_dbg += f"-- Sox Plot: ** Exception finding existing plot files: {str(e)}\n"
+                            plot_dbg += f"-- GnuPlot: ** Exception finding existing plot files: {str(e)}\n"
                         finally:
                             # Add file sequence number to filename
                             next_seq = max(nums, default=0) + 1
                             filename = f"{filename_prefix}_{next_seq:04d}.png"
                             full_save_path = os.path.join(dir_path, filename)
                             shutil.copy2(png_path, full_save_path)
-                            plot_dbg += f"-- Sox Plot:  filename: {filename}  full_save_path: {full_save_path}\n"
-                            plot_dbg += f"--> Sox Plot: ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
+                            plot_dbg += f"-- GnuPlot:  filename: {filename}  full_save_path: {full_save_path}\n"
+                            plot_dbg += f"--> GnuPlot: ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
                 else:
-                    plot_dbg += "-- Sox Plot: Save skipped: save_sox_plot=False.\n"
+                    plot_dbg += "-- GnuPlot: Save skipped: save_sox_plot=False.\n"
 
-                if success:
+                if gnuplot_success:
                     try:
                         pil_img = Image.open(png_path).convert("RGB")
                         img_array = np.array(pil_img)
                         sox_plot_image = torch.from_numpy(img_array).float().unsqueeze(0) / 255.0
-                        plot_dbg += " Plot image loaded successfully."
+                        plot_dbg += "-- GnuPlot: Plot image loaded gnuplot_successfully."
                     except Exception as e:
-                        plot_dbg += f" Image load failed: {e}"
+                        plot_dbg += f"*** Image load failed: {e}"
                         sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
                 else:
                     sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
-                    plot_dbg += " Gnuplot failed, using blank image."
+                    plot_dbg += "*** Gnuplot failed, using blank image."
 
                 # Cleanup temp files
                 try:
                     os.remove(temp_gnu.name)
                 except OSError:
                     pass
-                if success: 
+                if gnuplot_success:
                     try:
                         os.remove(png_path)
                     except OSError:
                         pass
 
-                plot_dbg += f"** End: SoX Plots Requested **\n\n"
+                plot_dbg += f"** End: GnuPlot Requested **\n\n"
         for i in range(waveform.shape[0]):
             single_waveform = waveform[i]
 
@@ -394,7 +402,10 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         i += 1
             else:
                 i += 1
-        
+        print("--------------------------")
+        print("---- Plottable Effects ---")
+        print(plottable_effects)
+        print("--------------------------")
         return plottable_effects
 
     @staticmethod
@@ -402,24 +413,28 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
         """
         Generate gnuplot formulas for each plottable effect by running SoX --plot.
-        
+
         For each plottable effect, generates a .gnu plot file using SoX --plot,
         then extracts the gnuplot formula, limiting parameters (xrange, yrange),
         and step information.
-        
+
         Args:
             plottable_effects: List of dicts from get_plottable_effects()
             sample_rate: Sample rate for the dummy audio file (default 44100)
-            
+
         Returns:
             List of dicts containing:
             - 'effect': effect name
             - 'args': effect arguments
             - 'gnuplot_formula': the plot formula string
             - 'xrange': x-axis limits [min, max] or None
-            - 'yrange': y-axis limits [min, max] or None  
+            - 'yrange': y-axis limits [min, max] or None
             - 'step': step size or None (extracted from xrange/samples)
         """
+        print("--------------------")
+        print("--- plottable_effects ---")
+        print(json.dumps(plottable_effects))
+        print("--------------------")
         results = []
         output_path = '-n'
 
@@ -443,25 +458,30 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         for effect_info in plottable_effects:
                 effect_name = effect_info['effect']
                 args = effect_info['args']
-                
+
                 # Build SoX command with just this effect
                 plot_cmd = cmd_base + [effect_name] + args
-                
+
                 try:
+                    print(f"--- Getting gnuplot script for [{effect_name}]")
                     result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
                     if result.stdout.strip():
                         gnuplot_script = result.stdout
                     else:
                         gnuplot_script = ""
-                    
-                    # Parse the gnuplot script
+
+                    # Parse the gnuplot
+                    print(f"--- Gunscript Returned [{effect_name}]---")
+                    print(gnuplot_script)
                     formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
                     formula_data['effect'] = effect_name
                     formula_data['args'] = args
-                    if result.returncode != 0:
-                        formula_data['error'] = result.stderr or "SoX --plot failed"
+                    if result.returncode != 2:
+                        formula_data['error'] = result.stderr or result.stdout or f"SoX --plot failed for [{effect_name}]"
                     results.append(formula_data)
                 except Exception as e:
+                    print(f"*** 'sox --pot' Threw and exception: {e} ***")
+                    print(f"*** 'sox --plot' return code: [{result.returncode}]")
                     # If SoX fails for this effect, still include it with error info
                     formula_data = SoxApplyEffectsNode._parse_gnuplot_script('')
                     formula_data['effect'] = effect_name
@@ -542,9 +562,10 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             formula_data['formula'] = formula_data['H']
 
         # coeffs
-        matches = re.findall(r'([ab][012]=[^;]+)', script)
+        matches = re.findall(r'([ab][012]=[^\n]+)', script)
         if matches:
             formula_data['coeffs'] = '; '.join(matches)
+            print(f"===> coeffs: {formula_data['coeffs']}")
 
         # xrange
         match = re.search(r'plot \[(f=[^:]+):Fs/2\]', script)
@@ -563,7 +584,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
 
     @staticmethod
     def generate_combined_script(formula_data_list, output_fs=48000, final_net_response=False,
-                                      x_range="[f=20:20000]", y_range="[-60:30]"):
+                                 x_range="[f=20:20000]", y_range="[-60:30]",
+                                 x_plot=800, y_plot=600):
         """
         Generate a combined .gnu script from a list of formula_data dicts.
         Assumes frequency-response plots; standardizes Fs and ranges.
@@ -594,45 +616,71 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         script_parts.append(f"Fs={output_fs}")
         script_parts.append("o=2*pi/Fs")
 
+        print("-------------------------- (generate_combined_script)")
+        print("---- formula_data_list ---")
+        print(json.dumps(formula_data_list, indent=2))
+        print("--------------------------")
+
+        print("-------------------------- (generate_combined_script)")
+        print("---- script_parts ---")
+        print(json.dumps(script_parts, indent=2))
+        print("--------------------------")
+
         # Per-effect definitions (renamed to avoid conflicts)
         plot_expressions = []
-        for i, data in enumerate(formula_data_list, start=1):
-            if data.get('H'):  # Skip if no formula (e.g., compand)
-                if data.get('coeffs'):
+        formulas = []
+        i = 0
+        for data in formula_data_list:
+            i += 1
+            print(f'i: {i}\n{{{json.dumps(data)}}}')
+            if 'H' in data:  # Skip if no formula (e.g., compand)
+                if 'coeffs' in data:
+                    print(f"---> data['coeffs']: {data['coeffs']}")
                     renamed_coeffs = re.sub(r'([ab][0-2])=([^; ]+)', lambda m: f"{m.group(1)}_{i}={m.group(2)}", data['coeffs'])
                     script_parts.append(renamed_coeffs + ';')
                 renamed_h_formula = re.sub(r'([ab][0-2])', lambda m: f"{m.group(1)}_{i}", data['H'])
                 renamed_h = f"H{i}(f)={renamed_h_formula}"
+                data['H'] = renamed_h
+                formulas.append("H{i}")
+                print(f"---> renamed_h: {renamed_h}")
                 script_parts.append(renamed_h)
 
-            # Plot expression (use parsed 'plot_curve' if available, else default)
-            curve_expr = data.get('plot_curve') or f"20*log10(H{i}(f))"
-            # Pleasing colors: cycle through rgb or linetype (lt) 1-8
-            color = f"lc {i % 8 or 8}"  # Or lc rgb '#FF0000' for red, etc.
-            title = data.get('title', f'Effect {i}')
-            plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
+                # Plot expression (use parsed 'plot_curve' if available, else default)
+                curve_expr = data['plot_curve'] or f"20*log10(H{i}(f))"
+                # Pleasing colors: cycle through rgb or linetype (lt) 1-8
+                color = f"lc {i % 8 or 8}"  # Or lc rgb '#FF0000' for red, etc.
+                title = data.get('title', f'Effect {i}')
+                plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
 
-        # Append net response if requested and there are effects
-        if final_net_response and len(formula_data_list) > 0:
-            num_effects = len(formula_data_list)
+            print("-------------------------- (generate_combined_script)")
+            print(f"---- script_parts [{i}] ---")
+            print("\n".join(script_parts))
+            print("--------------------------")
+
+        # Append net response if requestpped and there are effects
+        if final_net_response and len(formulas) > 0:
+            num_effects = len(formulas)
             product = " * ".join(f"H{k}(f)" for k in range(1, num_effects + 1))
             curve_expr = f"20*log10({product})"
             title = 'Combined Net Response'
-            color = f"lc {(num_effects + 1) % 8 or 8} lw 3"  # Thicker for net
+            color = f'lc "black" lw 3'  # Thicker for net
             plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
 
         # Plot command
         if not plot_expressions:
             plot_expressions.append("0 title 'No Effects (Flat 0 dB)' with lines lc rgb '#808080'")
+        print(f"---> plot_expressions: {plot_expressions}")
         script_parts.append(f"plot {x_range} {y_range} \\")
         script_parts.append(", \\\n".join(plot_expressions))
 
-        # Optional: Interactive pause or output to file
-        # script_parts.append("pause -1 'Hit return to continue'")
-        # Or for PNG: uncomment below
-        # script_parts.append("set term png size 800,600")
-        # script_parts.append("set output 'combined.png'")
-        # script_parts.append("replot")  # After plot
+        print("-------------------------- (generate_combined_script)")
+        print(f"---- script_parts [before return] ---")
+        print(script_parts)
+        print("--------------------------")
+        print("-------------------------- (generate_combined_script)")
+        print(f"---- script_parts [joined] ---")
+        print("\n".join(script_parts))
+        print("--------------------------")
 
         return "\n".join(script_parts)
 

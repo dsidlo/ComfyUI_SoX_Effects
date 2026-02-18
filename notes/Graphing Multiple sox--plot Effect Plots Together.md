@@ -1212,3 +1212,147 @@ This keeps everything aligned on the same frequency axis and scale.
 This single combined plot gives the clearest "before → after" story for your effects chain without needing multiple figures. If your audio is very long/variable, consider trimming to a representative section (e.g., `sox input.wav trim 10 30` for 30 seconds starting at 10 s) before computing the spectrum.
 
 If you share a snippet of your current Gnuplot code or example .dat file format from your effects, I can give more precise plot commands!
+
+## Adding Pro Spectrum Analysis
+
+### Question: Best Spectram Analysis Tool
+
+Given the Spectral Visualization that you indicated earlier...
+In ComfyUI, I currently display the audio spectrograms of up to 4 audio inputs in my spectrogram-node. The node has 1 spectrogram output and the user can see all 4 plots when the user uses the Preview Image Node, so they can already compare the raw audio and up to three processed audio sectrograms with just one spectrogram node and compare them visually. Given that utility, would you recommend adding additional spectrogram outputs on the existing node that does some type of additional visualizations that might be of use?
+
+### Response: Use Diff_Spectrum
+
+Yes, your current setup is already quite powerful and user-friendly for the most common and immediately useful comparison in audio effects chains: **side-by-side spectrograms** of raw + processed versions (up to 4 inputs → 1 combined preview image). This is the gold standard for spotting time-frequency changes (e.g., high-frequency roll-off from a lowpass, boosted transients, added harmonics, noise reduction, phase artifacts, or compression pumping).
+
+Many existing ComfyUI audio-related nodes (like those in comfyui-audio-processing, AudioSR integrations, or mastering suites) already lean heavily on before/after spectrogram previews precisely because it's the most informative single visualization for most users working with effects, upsampling, denoising, or generation workflows.
+
+### Should You Add Extra Spectrogram Outputs?
+**Short answer: Probably not more plain spectrograms** — but **yes to carefully chosen additional visualization types** as optional/extra outputs, especially if they complement spectrograms without duplicating effort or cluttering the node.
+
+#### Why not just more identical spectrograms?
+- Your node already supports up to 4 → one composite preview covers the primary need (raw vs. 1–3 processed).
+- Adding 4 separate IMAGE outputs (one per input) would mostly duplicate what Preview Image already shows when users connect multiple previews or use gallery nodes.
+- It increases node complexity (more pins, more code) for marginal gain in the typical case.
+
+#### What would actually be useful to add as extra outputs?
+Focus on visualizations that reveal information **not easily seen in standard spectrograms** (log-frequency, dB-scaled, time-frequency heatmaps). These are high-value for effects tweaking, mastering feedback, or debugging chains:
+
+1. **Average / Long-term Power Spectrum (1D line plot as IMAGE)**  
+   - Computes and plots the mean magnitude spectrum (or PSD) across the entire clip for each input.  
+   - Overlayable curves (raw + processed) on one image, or separate if preferred.  
+   - Extremely useful for judging overall tonal balance, EQ decisions, low-end buildup, harshness in highs — things that average out temporal variations.  
+   - Many pro tools (iZotope, FabFilter, NUGEN Visualizer) use spectrum overlays for "pre vs post" comparison.  
+   - Output: 1–2 IMAGE tensors (e.g., "Combined Spectrum" showing all 4 as overlaid curves + legend, or "Individual Spectra" as small multiples).  
+   - Bonus: Add optional difference curve (processed - raw) to highlight net changes.
+
+2. **Waveform (time-domain amplitude plot)**  
+   - Simple RMS / peak waveform envelope or full waveform view.  
+   - Great for seeing compression/limiting behavior, clipping, dynamic changes over time — which spectrograms hide.  
+   - Output: One combined waveform image (overlay raw + processed, perhaps normalized) or separate small plots.
+
+3. **Difference Spectrogram** (processed - raw)  
+   - A single spectrogram showing only the delta (gain added/removed per time-frequency bin).  
+   - Color scale: positive = boosted (e.g., red/yellow), negative = cut (blue).  
+   - This is killer for quickly seeing "what did this effect chain actually do?" — especially with multiple effects stacked.  
+   - Many mastering analyzers highlight this view.
+
+4. **Other niche but high-signal additions (lower priority)**:  
+   - **Vectorscope / Lissajous** (stereo phase/correlation plot) — if your node handles stereo audio; catches widening/narrowing or phase issues from effects.  
+   - **Peak/RMS/LUFS metering overlay** — text or small bar graphs baked into an image (useful for loudness matching).  
+   - **Cepstral / MFCC visualization** (if targeting voice/speech effects) — but probably overkill for general SoX-style chains.
+
+#### Implementation Tips / Recommendations
+- Keep the node clean: Make new outputs **optional** (via boolean toggles like "output_spectrum", "output_waveform", "output_diff_spectro").
+- For composite images: Use matplotlib/seaborn/torch plotting in the node code to generate clean, labeled plots (log freq axis, dB scale, legends with input names if possible).
+- Resolution: Keep images reasonably sized (e.g., 1024×512 or 800×600) to avoid VRAM bloat when previewing.
+- If adding multiple types, consider a "Visualization Mode" enum: "Spectrograms Only" (current), "Spectra + Waveforms", "Full Analysis", etc.
+- Test with real chains: EQ boosts/cuts, high/lowpass, compression, saturation — see which extra view makes the biggest "aha" moment.
+
+**Bottom line**: Your existing 4-in-1 spectrogram preview is excellent and covers 80–90% of real-world needs. Adding a **combined average spectrum output** (with raw + processed overlaid) would be the single most valuable upgrade — it's the natural companion to spectrograms and directly answers "how did the frequency balance change?". A difference spectrogram would be a strong second choice.
+
+If you describe what kinds of effects/audio you're targeting most (e.g., music mastering, voice processing, sound design, generative), I can prioritize more precisely!
+
+## Question - Deff-Spectro Toggle + Raw vs Others
+
+I am targeting all of the audio types that you mention. Rather than adding an additional output, I could add a toggle switch that will output the diff-spectrogram for each the 1 raw vs the 3 effected, but that would have the image grid with one missing tile (unbalanced). Do you have a recommendation for another that might give one some sort of wrap-up raw vs the other (1-3) inputs?
+
+## Response
+
+**Yes — go with a toggleable "Spectrum Overlay Wrap-up" mode as your primary additional visualization.** This gives you a clean, balanced single-image summary that perfectly complements your existing 4-tile spectrogram grid, without any missing-tile awkwardness.
+
+### Why This Is the Ideal Wrap-up
+- **Inherently balanced**: Always **one single IMAGE** (no grid required), no matter if you have 1, 2, or 3 processed inputs.
+- **Directly addresses “raw vs the others”**: Plots **all 4 spectra overlaid** on the exact same axes (log frequency 20 Hz–20 kHz, dB scale). You instantly see tonal-balance shifts, low-end buildup, harshness reduction, mid scoops, etc., across every variant at once.
+- **Pro standard**: This is exactly how iZotope Insight, NUGEN Visualizer, FabFilter Pro-Q 3’s analyzer, CamillaDSP, REW, etc. display multi-track/pre-post comparisons.
+
+Here are real examples from industry tools (what your output should look like):
+
+
+![https://nugenaudio.com/wp-content/uploads/2018/01/Visualizer.png](https://nugenaudio.com/wp-content/uploads/2018/01/Visualizer.png)
+
+
+![https://www.audiosciencereview.com/forum/index.php?attachments/camilaeq1-webp.509681/](https://www.audiosciencereview.com/forum/index.php?attachments/camilaeq1-webp.509681/)
+
+
+(NUGEN Visualizer multi-spectrum overlay + CamillaEQ with multiple live spectrum curves.)
+
+### Recommended Toggle Options (Simple Enum or Boolean(s))
+Add one `visualization_mode` dropdown with:
+
+1. **"Spectrogram Grid"** (your current 2×2 or dynamic grid) → side-by-side time-frequency detail
+2. **"Spectrum Overlay"** (new) → the wrap-up single image described above
+
+Optional third mode if you still want diffs:
+3. **"Delta Spectrum"** → same style as #2 but plots the **net change curves** (processed – raw) for each variant. Still one clean overlaid image, different colors, zero line reference.
+
+(If you really want full delta spectrograms, you can make a **1×3 horizontal strip** or **3-panel vertical** layout for the three diffs — it’s still balanced and uses the full canvas width/height.)
+
+### Quick Implementation Sketch (Matplotlib inside your node)
+```python
+import matplotlib.pyplot as plt
+from io import BytesIO
+import torch
+import numpy as np
+
+# ... compute average spectra for raw + proc1/2/3 (using your existing spectrogram code + mean along time)
+
+fig, ax = plt.subplots(figsize=(12, 6))  # or (10,5) for ComfyUI preview size
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']  # blue, orange, green, red
+labels = ['Raw', 'Processed 1', 'Processed 2', 'Processed 3']
+
+for i, spec_db in enumerate(spectra_list):
+    if spec_db is not None:
+        ax.semilogx(freqs, spec_db, color=colors[i], lw=1.8, label=labels[i])
+
+ax.set_xlabel('Frequency (Hz)')
+ax.set_ylabel('Level (dB)')
+ax.set_xlim(20, 20000)
+ax.set_ylim(-90, 6)
+ax.grid(True, alpha=0.3)
+ax.legend(loc='upper right')
+ax.set_title('Long-term Spectral Balance Comparison')
+
+# Save to tensor for ComfyUI IMAGE output
+buf = BytesIO()
+fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='black')
+buf.seek(0)
+image_tensor = torch.from_numpy(plt.imread(buf)).permute(2,0,1).unsqueeze(0).float() / 255.0
+```
+
+Add optional text annotations (e.g., “+3 dB @ 120 Hz on Proc 2”) or a small inset difference bar if you want to go extra fancy.
+
+### Bonus Ultra-Wrap-up Alternative (if you want a second toggle)
+**"Mastering Metrics Table"** — one clean image with a 4-column table:
+- Input name
+- Integrated LUFS
+- True Peak dBTP
+- Crest Factor
+- RMS (20–20k)
+- Low-end energy % (≤80 Hz)
+
+This is the ultimate “at-a-glance” wrap-up for mastering/voice/sound-design/generation workflows.
+
+Your current spectrogram grid already gives the best time-frequency view. Adding the **spectrum overlay** as the toggleable companion gives you the best frequency-balance wrap-up with zero layout headaches. This combo is what most serious audio nodes (AudioSR, MD_Mastering suite, etc.) are moving toward.
+
+Let me know which mode you lean toward and I can help flesh out the exact matplotlib styling or metric calculations!
+

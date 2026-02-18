@@ -14,6 +14,8 @@ This repository contains a collection of ComfyUI nodes for applying various audi
   - Each fir_coefficient file contains the fir coefficients for an environment type or room, modifying audio sound with that rooms acoustics.
   - TODO: Add the ability to choose your own coefficients file.
 
+- ![SoXApplyEffectNode Plot 2026-02-18 09-01-00.png](https://github.com/ComfyUI/ComfyUI_SoX_Effects/docs/images/SoXApplyEffectNode%20Plot%202026-02-18%2009-01-00.png)
+  
 ## Effects supported (61)
 
 ## How the nodes work

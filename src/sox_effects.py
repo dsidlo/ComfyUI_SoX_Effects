@@ -19,6 +19,9 @@ else:
     from .sox_node_utils import SoxNodeUtils
 
 
+PRINT_DEBUG = False
+
+
 class SoxApplyEffectsNode:
     # Tested: DGS v0.1.3
     """
@@ -496,10 +499,11 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         i += 1
             else:
                 i += 1
-        print("--------------------------")
-        print("---- Plottable Effects ---")
-        print(plottable_effects)
-        print("--------------------------")
+        if PRINT_DEBUG:
+            print("--------------------------")
+            print("---- Plottable Effects ---")
+            print(plottable_effects)
+            print("--------------------------")
         return plottable_effects
 
     @staticmethod
@@ -525,10 +529,11 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             - 'yrange': y-axis limits [min, max] or None
             - 'step': step size or None (extracted from xrange/samples)
         """
-        print("--------------------")
-        print("--- plottable_effects ---")
-        print(json.dumps(plottable_effects))
-        print("--------------------")
+        if PRINT_DEBUG:
+            print("--------------------")
+            print("--- plottable_effects ---")
+            print(json.dumps(plottable_effects))
+            print("--------------------")
         results = []
         output_path = '-n'
 
@@ -559,7 +564,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 plot_cmd = cmd_base + [effect_name] + args
 
                 try:
-                    print(f"--- Getting gnuplot script for [{effect_name}]")
+                    if PRINT_DEBUG:
+                        print(f"--- Getting gnuplot script for [{effect_name}]")
                     result = subprocess.run(plot_cmd, capture_output=True, check=False, text=True)
                     if result.stdout.strip():
                         gnuplot_script = result.stdout
@@ -567,8 +573,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         gnuplot_script = ""
 
                     # Parse the gnuplot
-                    print(f"--- Gunscript Returned [{effect_name}]---")
-                    print(gnuplot_script)
+                    if PRINT_DEBUG:
+                        print(f"--- Gunscript Returned [{effect_name}]---")
+                        print(gnuplot_script)
                     formula_data = SoxApplyEffectsNode._parse_gnuplot_script(gnuplot_script)
                     formula_data['effect'] = effect_name
                     formula_data['args'] = args
@@ -576,8 +583,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         formula_data['error'] = result.stderr or result.stdout or f"SoX --plot failed for [{effect_name}]"
                     results.append(formula_data)
                 except Exception as e:
-                    print(f"*** 'sox --pot' Threw and exception: {e} ***")
-                    print(f"*** 'sox --plot' return code: [{result.returncode}]")
+                    if PRINT_DEBUG:
+                        print(f"*** 'sox --pot' Threw and exception: {e} ***")
+                        print(f"*** 'sox --plot' return code: [{result.returncode}]")
                     # If SoX fails for this effect, still include it with error info
                     formula_data = SoxApplyEffectsNode._parse_gnuplot_script('')
                     formula_data['effect'] = effect_name
@@ -661,7 +669,8 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         matches = re.findall(r'([ab][012]=[^\n]+)', script)
         if matches:
             formula_data['coeffs'] = '; '.join(matches)
-            print(f"===> coeffs: {formula_data['coeffs']}")
+            if PRINT_DEBUG:
+                print(f"===> coeffs: {formula_data['coeffs']}")
 
         # xrange
         match = re.search(r'plot \[(f=[^:]+):Fs/2\]', script)

@@ -4,6 +4,7 @@ import tempfile
 import os
 import torch
 import torchaudio
+import soundfile as sf
 import numpy as np
 import re
 import rich
@@ -102,8 +103,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
     FUNCTION = "apply_effects"
     CATEGORY = "audio/SoX/Effects/Apply"
     DESCRIPTION = """Applies the chained SoX effects parameters to the input audio. 
-  - If enable_sox_plot=True, generates diagnostic plot PNG (no audio processing; passes through). 
-    - *** If enable_sox_plot=True, no audio processing is performed. ***"""
+  - If enable_sox_plot=True, generates diagnostic plot PNG including frequency response of effects and audio analysis."""
 
     def apply_effects(self, audio, params, enable_apply=True, enable_sox_plot=False,
                       final_net_response=False,
@@ -116,124 +116,32 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
         cmd_str = "sox input.wav output.wav " + shlex.join(
             sox_cmd_params) if sox_cmd_params else "No effects applied (audio passed through)."
 
-        # Handle plotting if enabled (no audio processing; diagnostic only)
+        # Initialize
         sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)  # Blank default
         plot_dbg = ""
-        plot_script_path = None
-        png_path = None
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-            torchaudio.save(temp_input.name, waveform[0], sample_rate)  # Use first batch item
-            input_path = temp_input.name
-        output_path = tempfile.mktemp(suffix='.wav')  # Dummy output
-        # Audio processing (skipped if plotting, per tooltip)
-        output_waveforms = []
-        processed_audio = audio  # Default passthrough
-
-        plot_dbg = ""
         sox_dbg = ""
-        if enable_sox_plot:
-            if not sox_cmd_params:
-                plot_dbg += "** GnuPlot skipped: Empty SOX_PARAMS chain (no effects to plot). **\n"
-            else:
-                plot_dbg += f"\n** Start: GnuPlot Requested **\n"
-                plottable_effects = self.get_plottable_effects(sox_cmd_params)
-                plot_dbg += f"-- GnuPlot: Got plottable effects from pipeline: {json.dumps(plottable_effects, indent=3)}\n"
-                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate)
-                plot_dbg += f"-- GnuPlot: Got plot formulas from gnuplots: {json.dumps(gnu_formulas, indent=3)}\n"
-                print("-------------------- (apply_effects)")
-                print("--- plottable_effects ---")
-                print(json.dumps(plottable_effects))
-                print("--------------------")
-                gnu_plot_script = self.generate_combined_script(gnu_formulas, output_fs=sample_rate, final_net_response=final_net_response, x_plot=plot_size_x, y_plot=plot_size_y)
-                plot_dbg += f"-- GnuPlot: Combined gnuplot script: {gnu_plot_script}\n"
-                # Output gnu_plot_script to temp file
-                temp_gnu = tempfile.NamedTemporaryFile(suffix=".gnu", delete=False)
-                temp_gnu.write(gnu_plot_script.encode())
-                temp_gnu.close()
-                print("-------------------- (apply_effects)")
-                print(f"--- gnu_plot_script in [{temp_gnu.name}] ---")
-                print(gnu_plot_script)
-                print("--------------------")
-                # Create a tmp png file
-                png_path = tempfile.mktemp(suffix='.png')
-                e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{png_path}'; load '{temp_gnu.name}'"
-                gnu_plot_cmd = ['gnuplot', '-e', e_param]
-                plot_dbg += f"--- GnuPlot: GnuPlot cmd: {shlex.join(gnu_plot_cmd)}\n"
-                result = subprocess.run(gnu_plot_cmd, capture_output=True, check=False, text=True)
-                gnuplot_success = result.returncode == 0
-                if gnuplot_success:
-                    plot_dbg += f"--- GnuPlot: Successful: return code: {result.returncode}\n"
-                else:
-                    plot_dbg += f"--- *** GnuPlot: Failed: return code: {result.returncode}\n"
-                    if result.stdout.strip():
-                        plot_dbg += f"\n--- GnuPlot: STDOUT ---\n{result.stdout.strip()}\n--- GnuPlot:  STDOUT END ---\n"
-                    if result.stderr.strip():
-                        plot_dbg += f"\n--- GnuPlot:  STDERR ---\n{result.stderr.strip()}\n--- GnuPlot: STDERR END ---\n"
-                # Save if requested (incremental, like spectrogram)
-                if save_sox_plot:
-                    plot_dbg += "---> GnuPlot: Saving plot...\n"
-                    base_prefix = plot_file_prefix.strip()
-                    if not base_prefix:
-                        plot_dbg += "-- GnuPlot: Save skipped: Empty plot_file_prefix.\n"
-                    else:
-                        # The full dir path
-                        dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
-                        # Get filename prefix from plot_file_prefix
-                        filename_prefix = os.path.basename(base_prefix)
-                        plot_dbg += f"-- GnuPlot:  base_prefix: {base_prefix}  dir_path: {dir_path}  filename_prefix: {filename_prefix}\n"
-                        os.makedirs(dir_path, exist_ok=True)
-                        pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
-                        nums = []
-                        # Collects existing sequence numbers from matching plot files
-                        try:
-                            for f in os.listdir(dir_path):
-                                plot_dbg += f"   - {f}\n"
-                                m = re.match(pattern, f)
-                                if m:
-                                    nums.append(int(m.group(1)))
-                        except OSError as e:
-                            plot_dbg += f"-- GnuPlot: ** Exception finding existing plot files: {str(e)}\n"
-                        finally:
-                            # Add file sequence number to filename
-                            next_seq = max(nums, default=0) + 1
-                            filename = f"{filename_prefix}_{next_seq:04d}.png"
-                            full_save_path = os.path.join(dir_path, filename)
-                            shutil.copy2(png_path, full_save_path)
-                            plot_dbg += f"-- GnuPlot:  filename: {filename}  full_save_path: {full_save_path}\n"
-                            plot_dbg += f"--> GnuPlot: ...Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
-                else:
-                    plot_dbg += "-- GnuPlot: Save skipped: save_sox_plot=False.\n"
+        output_waveforms = []
+        processed_audio = audio
+        
+        pre_audio_data = None
+        post_audio_data = None
 
-                if gnuplot_success:
-                    try:
-                        pil_img = Image.open(png_path).convert("RGB")
-                        img_array = np.array(pil_img)
-                        sox_plot_image = torch.from_numpy(img_array).float().unsqueeze(0) / 255.0
-                        plot_dbg += "-- GnuPlot: Plot image loaded gnuplot_successfully."
-                    except Exception as e:
-                        plot_dbg += f"*** Image load failed: {e}"
-                        sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
-                else:
-                    sox_plot_image = torch.zeros((1, plot_size_y, plot_size_x, 3), dtype=torch.float32)
-                    plot_dbg += "*** Gnuplot failed, using blank image."
-
-                # Cleanup temp files
-                try:
-                    os.remove(temp_gnu.name)
-                except OSError:
-                    pass
-                if gnuplot_success:
-                    try:
-                        os.remove(png_path)
-                    except OSError:
-                        pass
-
-                plot_dbg += f"** End: GnuPlot Requested **\n\n"
+        # 1. Process Audio first (always, to allow analysis)
         for i in range(waveform.shape[0]):
             single_waveform = waveform[i]
+            
+            # Extract pre-processed audio frequency data for analysis (first batch item only)
+            if enable_sox_plot and i == 0:
+                pre_audio_data = self._get_audio_freq_data(single_waveform, sample_rate)
 
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
-                torchaudio.save(temp_input.name, single_waveform, sample_rate)
+                # Use soundfile to save to avoid ffmpeg backend filter errors with undefined channel layouts
+                data = single_waveform.detach().cpu().numpy()
+                if data.ndim == 1:
+                    data = data.reshape(-1, 1)
+                else:
+                    data = data.T # (C, L) -> (L, C)
+                sf.write(temp_input.name, data, sample_rate)
                 input_path = temp_input.name
 
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_output:
@@ -250,8 +158,16 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                         sox_dbg += f"** SoX cmd executed: {shlex.join(cmd)}\n"
                         sox_dbg += f"** SoX cmd failed (rc={sp_ret.returncode}); skipping render. **\n"
                     else:
-                        out_waveform, _ = torchaudio.load(output_path)
+                        # Use soundfile to load to avoid ffmpeg backend filter errors with undefined channel layouts
+                        data, sr = sf.read(output_path, always_2d=True, dtype='float32')
+                        if sr != sample_rate:
+                            # Resample not performed here; rely on SoX to preserve rate. Proceed but note in debug.
+                            sox_dbg += f"\n[warn] Output sample rate {sr} != expected {sample_rate}. Proceeding.\n"
+                        out_waveform = torch.from_numpy(data.T)
                         output_waveforms[-1] = out_waveform
+                        # Extract post-processed audio frequency data for analysis (first batch item only)
+                        if enable_sox_plot and i == 0:
+                            post_audio_data = self._get_audio_freq_data(out_waveform[0], sample_rate)
                     if sp_ret.stdout.strip():
                         sox_dbg += f"\n--- SoX STDOUT ---\n{sp_ret.stdout}\n--- SoX STDOUT END ---\n"
                     if sp_ret.stderr.strip():
@@ -268,6 +184,7 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             if os.path.exists(output_path):
                 os.remove(output_path)
 
+        # Finalize audio output
         sox_dbg += "\n--- Prep Output Waveforms... ---\n"
         max_samples = max(w.shape[-1] for w in output_waveforms)
         padded_waveforms = []
@@ -278,14 +195,190 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
             padded_waveforms.append(w)
 
         stacked = torch.stack(padded_waveforms)
-
         processed_audio = {"waveform": stacked, "sample_rate": sample_rate}
-        sox_dbg += "--- ...Prep Output Waveforms Compelted ---\n"
+        sox_dbg += "--- ...Prep Output Waveforms Completed ---\n"
+
+        # 2. Handle Plotting (diagnostic only)
+        if enable_sox_plot:
+            plot_dbg += f"\n** Start: GnuPlot Requested **\n"
+            plottable_effects = self.get_plottable_effects(sox_cmd_params) if sox_cmd_params else []
+            
+            gnu_formulas = []
+            if plottable_effects:
+                plot_dbg += f"-- GnuPlot: Got plottable effects from pipeline: {json.dumps(plottable_effects, indent=3)}\n"
+                gnu_formulas = self.get_gnuplot_formulas(plottable_effects, sample_rate=sample_rate)
+                plot_dbg += f"-- GnuPlot: Got plot formulas from gnuplots: {json.dumps(gnu_formulas, indent=3)}\n"
+            
+            gnu_plot_script = self.generate_combined_script(
+                gnu_formulas, 
+                output_fs=sample_rate, 
+                final_net_response=final_net_response, 
+                x_plot=plot_size_x, 
+                y_plot=plot_size_y,
+                pre_audio_data=pre_audio_data,
+                post_audio_data=post_audio_data
+            )
+
+            # Include the generated script in debug output for transparency/testing
+            plot_dbg += "-- GnuPlot: Combined script (generated) --\n"
+            plot_dbg += gnu_plot_script + "\n"
+            plot_dbg += "-- GnuPlot: Combined script end --\n"
+            
+            # Output gnu_plot_script to temp file
+            with tempfile.NamedTemporaryFile(suffix=".gnu", delete=False) as temp_gnu:
+                temp_gnu.write(gnu_plot_script.encode())
+                temp_gnu_path = temp_gnu.name
+            
+            # Create a tmp png file
+            png_path = tempfile.mktemp(suffix='.png')
+            e_param =f"set terminal pngcairo size {plot_size_x},{plot_size_y}; set output '{png_path}'; load '{temp_gnu_path}'"
+            gnu_plot_cmd = ['gnuplot', '-e', e_param]
+            plot_dbg += f"--- GnuPlot: GnuPlot cmd: {shlex.join(gnu_plot_cmd)}\n"
+            
+            result = subprocess.run(gnu_plot_cmd, capture_output=True, check=False, text=True)
+            gnuplot_success = result.returncode == 0
+            
+            if gnuplot_success:
+                plot_dbg += f"--- GnuPlot: Successful: return code: {result.returncode}\n"
+                try:
+                    pil_img = Image.open(png_path).convert("RGB")
+                    img_array = np.array(pil_img)
+                    sox_plot_image = torch.from_numpy(img_array).float().unsqueeze(0) / 255.0
+                    plot_dbg += "-- GnuPlot: Plot image loaded successfully.\n"
+                except Exception as e:
+                    plot_dbg += f"*** Image load failed: {e}\n"
+            else:
+                plot_dbg += f"--- *** GnuPlot: Failed: return code: {result.returncode}\n"
+                if result.stdout.strip():
+                    plot_dbg += f"\n--- GnuPlot: STDOUT ---\n{result.stdout.strip()}\n--- GnuPlot: STDOUT END ---\n"
+                if result.stderr.strip():
+                    plot_dbg += f"\n--- GnuPlot: STDERR ---\n{result.stderr.strip()}\n--- GnuPlot: STDERR END ---\n"
+
+            # Save if requested
+            if save_sox_plot and gnuplot_success:
+                plot_dbg += "---> GnuPlot: Saving plot...\n"
+                base_prefix = plot_file_prefix.strip()
+                if base_prefix:
+                    dir_path = os.path.dirname(os.path.abspath(f"{base_prefix}")) or '.'
+                    filename_prefix = os.path.basename(base_prefix)
+                    os.makedirs(dir_path, exist_ok=True)
+                    pattern = rf'^{re.escape(filename_prefix)}_(\d+).png$'
+                    nums = []
+                    try:
+                        for f in os.listdir(dir_path):
+                            m = re.match(pattern, f)
+                            if m:
+                                nums.append(int(m.group(1)))
+                    except OSError as e:
+                        plot_dbg += f"-- GnuPlot: ** Exception finding existing plot files: {str(e)}\n"
+                    finally:
+                        next_seq = max(nums, default=0) + 1
+                        filename = f"{filename_prefix}_{next_seq:04d}.png"
+                        full_save_path = os.path.join(dir_path, filename)
+                        shutil.copy2(png_path, full_save_path)
+                        plot_dbg += f"--> GnuPlot: Saved plot: {os.path.abspath(full_save_path)} (seq {next_seq:04d})\n"
+
+            # Cleanup temp files
+            try:
+                os.remove(temp_gnu_path)
+                if os.path.exists(png_path):
+                    os.remove(png_path)
+            except OSError:
+                pass
+
+            plot_dbg += f"** End: GnuPlot Requested **\n\n"
 
         # Combine debug
         full_dbg = f"Model Command: {cmd_str}\n\n=== plot_dbg ===\n{plot_dbg}\n=== plot_dbg end ===\n\n=== sox_dbg ===\n{sox_dbg}\n=== sox_dbg end ===\n".strip()
 
         return (processed_audio, sox_plot_image, full_dbg)
+
+    @staticmethod
+    def _get_audio_freq_data(waveform, sample_rate):
+        """
+        Extract frequency data from a waveform using SoX 'stat -freq'.
+        Returns a list of [frequency, amplitude] pairs.
+        """
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
+            # Use soundfile to save to avoid ffmpeg backend filter errors with undefined channel layouts
+            data = waveform.detach().cpu().numpy()
+            if data.ndim == 1:
+                data = data.reshape(-1, 1)
+            else:
+                data = data.T # (C, L) -> (L, C)
+            sf.write(temp_wav.name, data, sample_rate)
+            temp_wav_path = temp_wav.name
+
+        try:
+            cmd = ['sox', temp_wav_path, '-n', 'stat', '-freq']
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            output = result.stderr
+
+            # Collect raw freq/amplitude pairs
+            raw = []
+            for line in output.strip().split('\n'):
+                parts = line.split()
+                if len(parts) == 2:
+                    try:
+                        f = float(parts[0])
+                        a = float(parts[1])
+                        if np.isfinite(f) and np.isfinite(a) and f > 0 and a > 0:
+                            raw.append((f, a))
+                    except ValueError:
+                        continue
+
+            if not raw:
+                return []
+
+            # Sort by frequency to prevent gnuplot from drawing criss-cross "starburst" lines
+            raw.sort(key=lambda x: x[0])
+
+            # Log-frequency binning to smooth the curve across spectrum
+            freqs = np.array([r[0] for r in raw], dtype=np.float64)
+            amps = np.array([r[1] for r in raw], dtype=np.float64)
+
+            f_min = max(20.0, float(np.min(freqs)))  # avoid sub-audible/near-zero bins
+            f_max = float(np.max(freqs))
+            if f_max <= f_min:
+                return [[float(f), float(a)] for f, a in raw]
+
+            # Choose number of bins based on density but cap for plotting performance
+            target_bins = 512
+            # Create logarithmically spaced bin edges
+            edges = np.geomspace(f_min, f_max, num=target_bins + 1)
+
+            # Digitize frequencies into bins
+            idx = np.digitize(freqs, edges) - 1  # bin index in [0, target_bins-1]
+            idx = np.clip(idx, 0, target_bins - 1)
+
+            # Aggregate by bin using median for robustness (fallback to mean if single)
+            binned_f = []
+            binned_a = []
+            for b in range(target_bins):
+                mask = (idx == b)
+                if not np.any(mask):
+                    continue
+                bin_freqs = freqs[mask]
+                bin_amps = amps[mask]
+                # Use geometric center of the bin for x
+                f_center = np.sqrt(edges[b] * edges[b + 1])
+                # Median amplitude smooths spikes
+                a_val = float(np.median(bin_amps))
+                if np.isfinite(a_val) and a_val > 0:
+                    binned_f.append(float(f_center))
+                    binned_a.append(a_val)
+
+            # Optional light smoothing: moving average over 3 bins
+            if len(binned_a) >= 3:
+                a_arr = np.array(binned_a, dtype=np.float64)
+                a_smooth = np.convolve(a_arr, np.ones(3)/3.0, mode='same')
+                binned_a = a_smooth.astype(np.float64).tolist()
+
+            data = [[f, a] for f, a in zip(binned_f, binned_a)]
+            return data
+        finally:
+            if os.path.exists(temp_wav_path):
+                os.remove(temp_wav_path)
 
     @staticmethod
     def get_plottable_effects(sox_params: list[str]):
@@ -449,7 +542,9 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_input:
                     # Create silent 1-second audio
                     dummy_audio = torch.zeros(1, 1, sample_rate, dtype=torch.float32)
-                    torchaudio.save(temp_input.name, dummy_audio[0], sample_rate)
+                    # Use soundfile to save to avoid ffmpeg backend filter errors with undefined channel layouts
+                    data = dummy_audio[0].detach().cpu().numpy().T
+                    sf.write(temp_input.name, data, sample_rate)
                     input_path = temp_input.name
                 synthetic_created = True
             except Exception as e:
@@ -586,102 +681,93 @@ Only saves if save_sox_plot=True and enable_sox_plot=True. Useful: Organize plot
     @staticmethod
     def generate_combined_script(formula_data_list, output_fs=48000, final_net_response=False,
                                  x_range="[f=20:20000]", y_range="[-60:30]",
-                                 x_plot=800, y_plot=600):
+                                 x_plot=800, y_plot=600,
+                                 pre_audio_data=None, post_audio_data=None):
         """
         Generate a combined .gnu script from a list of formula_data dicts.
         Assumes frequency-response plots; standardizes Fs and ranges.
 
         If final_net_response=True and there are effects, appends a combined net response curve
         using the product of all H_i(f) transfer functions (20*log10(product H_i(f))).
-
-        Note: This script does not make use of the "o" Angular Frequency, as it is only needed
-              when wildly different sample rate are involved.
-        # Example usage:
-        # combined_script = generate_combined_gnuplot([dict1, dict2, ...])
-        # with open('combined.gnu', 'w') as f:
-        #     f.write(combined_script)
+        
+        pre_audio_data and post_audio_data are optional lists of [freq, amp] for audio curves.
         """
         script_parts = []
 
         # Header: Common settings
         script_parts.append("# Combined SoX Effects Frequency Response")
-        script_parts.append("set title 'Combined SoX Effects'")
-        script_parts.append("set xlabel 'Frequency (Hz)'")  # Use common; override from first dict if desired
-        script_parts.append("set ylabel 'Gain (dB)'")
+        script_parts.append("set title 'Combined SoX Effects and Audio Analysis'")
+        script_parts.append("set xlabel 'Frequency (Hz)'")
+        script_parts.append("set ylabel 'Effect Gain (dB)'")
         script_parts.append("set logscale x")
-        script_parts.append("set samples 500")  # Higher for smoothness
+        script_parts.append("set samples 500")
         script_parts.append("set grid xtics ytics")
-        script_parts.append("set key left top")  # Legend position
+        script_parts.append("set key outside bottom center horizontal box")
 
+        # Handle Audio curves on secondary axis if provided
+        if pre_audio_data or post_audio_data:
+            script_parts.append("set y2label 'Audio Amplitude'")
+            script_parts.append("set y2tics")
+            # Set audio curves line weight to 4 as requested
+            audio_lw = 4
+        
         # Standard Fs and o
         script_parts.append(f"Fs={output_fs}")
         script_parts.append("o=2*pi/Fs")
 
-        print("-------------------------- (generate_combined_script)")
-        print("---- formula_data_list ---")
-        print(json.dumps(formula_data_list, indent=2))
-        print("--------------------------")
+        # Add Audio Data inline if present
+        if pre_audio_data:
+            script_parts.append("$pre_audio << EOD")
+            for f, a in pre_audio_data:
+                script_parts.append(f"{f} {a}")
+            script_parts.append("EOD")
+        
+        if post_audio_data:
+            script_parts.append("$post_audio << EOD")
+            for f, a in post_audio_data:
+                script_parts.append(f"{f} {a}")
+            script_parts.append("EOD")
 
-        print("-------------------------- (generate_combined_script)")
-        print("---- script_parts ---")
-        print(json.dumps(script_parts, indent=2))
-        print("--------------------------")
-
-        # Per-effect definitions (renamed to avoid conflicts)
+        # Per-effect definitions
         plot_expressions = []
         formulas = []
         i = 0
         for data in formula_data_list:
             i += 1
-            print(f'i: {i}\n{{{json.dumps(data)}}}')
-            if 'H' in data:  # Skip if no formula (e.g., compand)
-                if 'coeffs' in data:
-                    print(f"---> data['coeffs']: {data['coeffs']}")
+            if 'H' in data:
+                if 'coeffs' in data and data['coeffs']:
                     renamed_coeffs = re.sub(r'([ab][0-2])=([^; ]+)', lambda m: f"{m.group(1)}_{i}={m.group(2)}", data['coeffs'])
                     script_parts.append(renamed_coeffs + ';')
-                renamed_h_formula = re.sub(r'([ab][0-2])', lambda m: f"{m.group(1)}_{i}", data['H'])
-                renamed_h = f"H{i}(f)={renamed_h_formula}"
-                data['H'] = renamed_h
-                formulas.append("H{i}")
-                print(f"---> renamed_h: {renamed_h}")
-                script_parts.append(renamed_h)
+                
+                if data['H']:
+                    renamed_h_formula = re.sub(r'([ab][0-2])', lambda m: f"{m.group(1)}_{i}", data['H'])
+                    renamed_h = f"H{i}(f)={renamed_h_formula}"
+                    script_parts.append(renamed_h)
+                    formulas.append(f"H{i}")
 
-                # Plot expression (use parsed 'plot_curve' if available, else default)
-                curve_expr = data['plot_curve'] or f"20*log10(H{i}(f))"
-                # Pleasing colors: cycle through rgb or linetype (lt) 1-8
-                color = f"lc {i % 8 or 8}"  # Or lc rgb '#FF0000' for red, etc.
-                title = data.get('title', f'Effect {i}')
-                plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
+                    curve_expr = data.get('plot_curve') or f"20*log10(H{i}(f))"
+                    color = f"lc {i % 8 or 8}"
+                    title = data.get('title', f'Effect {i}')
+                    plot_expressions.append(f"{curve_expr} title '{title}' with lines {color} lw 2")
 
-            print("-------------------------- (generate_combined_script)")
-            print(f"---- script_parts [{i}] ---")
-            print("\n".join(script_parts))
-            print("--------------------------")
-
-        # Append net response if requestpped and there are effects
+        # Append net response
         if final_net_response and len(formulas) > 0:
-            num_effects = len(formulas)
-            product = " * ".join(f"H{k}(f)" for k in range(1, num_effects + 1))
+            product = " * ".join(f"{h}(f)" for h in formulas)
             curve_expr = f"20*log10({product})"
-            title = 'Combined Net Response'
-            color = f'lc "black" lw 3'  # Thicker for net
-            plot_expressions.append(f"{curve_expr} title '{title}' with lines {color}")
+            plot_expressions.append(f"{curve_expr} title 'Combined Net Response' with lines lc 'black' lw 3")
+
+        # Add audio plots to expressions
+        if pre_audio_data:
+            plot_expressions.append(f"'$pre_audio' using 1:2 title 'Pre-processed Audio' with lines axes x1y2 lc rgb '#8080FF' lw {audio_lw}")
+        if post_audio_data:
+            plot_expressions.append(f"'$post_audio' using 1:2 title 'Post-processed Audio' with lines axes x1y2 lc rgb '#FF8080' lw {audio_lw}")
 
         # Plot command
         if not plot_expressions:
             plot_expressions.append("0 title 'No Effects (Flat 0 dB)' with lines lc rgb '#808080'")
-        print(f"---> plot_expressions: {plot_expressions}")
+        
         script_parts.append(f"plot {x_range} {y_range} \\")
         script_parts.append(", \\\n".join(plot_expressions))
-
-        print("-------------------------- (generate_combined_script)")
-        print(f"---- script_parts [before return] ---")
-        print(script_parts)
-        print("--------------------------")
-        print("-------------------------- (generate_combined_script)")
-        print(f"---- script_parts [joined] ---")
-        print("\n".join(script_parts))
-        print("--------------------------")
 
         return "\n".join(script_parts)
 

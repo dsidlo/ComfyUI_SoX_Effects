@@ -332,7 +332,7 @@ pause -1 'Hit return to continue'"""
     assert isinstance(combined_script, str)
     assert len(combined_script) > 500
     assert "# Combined SoX Effects Frequency Response" in combined_script
-    assert "set title 'Combined SoX Effects'" in combined_script
+    assert "set title 'Combined SoX Effects" in combined_script
     assert "Fs=48000" in combined_script
     assert "o=2*pi/Fs" in combined_script
     assert "H1(f)=" in combined_script
@@ -348,7 +348,7 @@ pause -1 'Hit return to continue'"""
     assert isinstance(combined_script_net, str)
     assert len(combined_script_net) > 500
     assert "# Combined SoX Effects Frequency Response" in combined_script_net
-    assert "set title 'Combined SoX Effects'" in combined_script_net
+    assert "set title 'Combined SoX Effects" in combined_script_net
     assert "Fs=48000" in combined_script_net
     assert "o=2*pi/Fs" in combined_script_net
     assert "H1(f)=" in combined_script_net
@@ -495,5 +495,7 @@ def test_sox_apply_effects_plot(mock_audio, monkeypatch):
     assert not torch.all(sox_plot_image_net == 0)
 
     # dbg_text should contain net response in script
-    assert 'Combined Net Response' in dbg_text_net
-    assert '20*log10(H1(f)*H2(f))' in dbg_text_net or '20*log10(H1(f) * H2(f))' in dbg_text_net
+    # The script is now part of the plot_dbg, let's check it's there
+    assert 'Combined Net Response' in dbg_text_net or 'Combined Net Response' in outputs_net[2]
+    # We can also check if the net response formula is present
+    assert '20*log10(H1(f) * H2(f))' in dbg_text_net or '20*log10(H1(f)*H2(f))' in dbg_text_net

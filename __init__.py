@@ -1,21 +1,18 @@
-import importlib
+import sys
+import os
 
-node_list = [ # Add list of .py files containing nodes here
-    "sox_effects",
-    "sox_voices",
-    "sox_utils",
-]
-
-NODE_CLASS_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS = {}
-
-for module_name in node_list:
-    imported_module = importlib.import_module(".{}".format(module_name), __name__)
-
-    NODE_CLASS_MAPPINGS = {**NODE_CLASS_MAPPINGS, **imported_module.NODE_CLASS_MAPPINGS}
-    if hasattr(imported_module, "NODE_DISPLAY_NAME_MAPPINGS"):
-        NODE_DISPLAY_NAME_MAPPINGS = {**NODE_DISPLAY_NAME_MAPPINGS, **imported_module.NODE_DISPLAY_NAME_MAPPINGS}
+# Conditional import: relative if in package context, absolute otherwise
+if __package__:
+    # Normal package import (e.g., by ComfyUI)
+    import importlib
+    from .src import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+else:
+    # Direct script run: add current dir to path, use absolute
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from src import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
 
-from .sox_node_utils import SoxNodeUtils as sxu
+if __name__ == "__main__":
+    print("Root __init__.py executed! Mappings loaded.")
+    print(f"NODE_CLASS_MAPPINGS keys: {list(NODE_CLASS_MAPPINGS.keys())}")

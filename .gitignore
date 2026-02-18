@@ -108,6 +108,7 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
+.pytype/
 
 # Cython debug symbols
 cython_debug/
@@ -129,4 +130,6 @@ cython_debug/
 .Trashes
 ehthumbs.db
 Thumbs.db
+.aider.*
+.aider-desk/tasks/*
 .aider*

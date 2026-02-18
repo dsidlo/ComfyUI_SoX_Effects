@@ -4,6 +4,16 @@ This repository contains a collection of ComfyUI nodes for applying various audi
 
 <img src="example/SoxUtilMuxAudio5_1 Testing Workflow (0.1.1) 2026-01-30 14-22-10.png?raw">
 
+## Latest Changes v0.1.3
+
+- Updates to SoXApplyEffectsNode plotting.
+  - All plottable effects on the effects stack are plotted togehter on a single graph.
+  - Pre-Effects and Post-Effects audion frequency characteristics are plotted on the same graph with their own axis.
+- SoxSpectrorgramNode takes multiple inputs and ouputs the spectrograms for all attached incoming audio.
+- SoXFirNode has a dropdown of 38 fir_coefficient room acoustics files.
+  - Each fir_coefficient file contains the fir coefficients for an environment type or room, modifying audio sound with that rooms acoustics.
+  - TODO: Add the ability to choose your own coefficients file.
+
 ## Effects supported (61)
 
 ## How the nodes work
@@ -46,9 +56,24 @@ Requires Torch Audio.
 
 Auto Volume Balance Detection for RMS Power and Max Amplitude mixing modes.
 
-## Working on...
+## Progress...
 
-Silly me... I just realized that many sox effect are already implemented in torchaudio.sox_effects so it makes sense to use torch-audio for audio processing where possible and keep the sox implmentation for any missing from the torchaudio library.
+- Total Nodes: 101
+- Nodes Tested: 12
+- Nodes Untested: 89
+
+### Tested and Refined
+
+SoxUtilSpectrogramNode, SoxUtilTextMux5Node, SoxUtilTextMux10Node
+SoxUtilAudioMux5Node, SoxUtilAudioMuxPro5Node, SoxUtilAudioSplit5Node
+SoxUtilAudioReportNode, SoxApplyEffectsNode, SoxFirNode, SoxVeDeepOldManNode
+SoxVeGhostNode
+
+#### Notable
+
+SoxFirNode:
+  - Added dropdown of 38 fir_coefficient room acoustics files.
+    - Each fir_coefficient file contains the fir coefficients for an environment type or room, modifying audio sound with that rooms acoustics.
 
 ## Future work
 
@@ -60,3 +85,30 @@ Enable process_modes for node and do equivalent for SoX effect using torch-audio
 - Join the discussion and share your experiences with the community.
 - Contribute to the project by submitting pull requests or improving documentation.
 
+
+
+## Development
+
+### Running Tests
+
+Install development dependencies:
+
+```bash
+pip install -e .[dev]
+```
+
+Run tests:
+
+```bash
+pytest
+```
+
+This will automatically include coverage reports due to the configuration in pyproject.toml.
+
+To see detailed coverage:
+
+Open `htmlcov/index.html` in your browser after running tests.
+
+### Coverage Configuration
+
+Coverage is configured via `.coveragerc` to focus on the `src/` directory, excluding tests and init files. Reports are generated in terminal (missing lines) and HTML format.

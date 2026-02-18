@@ -1294,7 +1294,7 @@ Passthrough wet_audio, dry_audio, sox_params. enable_mix off → dry mono/stereo
 process_mode: torch=tensor (default); sox=future. dbg_text: settings/mode/SR/len."""
 
     def process(self, wet_audio, dry_audio, enable_mix=True, process_mode="auto", mix=50.0, gain=0.0, sox_params=None):
-        current_params = sox_params["sox_params"] if sox_params else []
+        current_params = list(sox_params["sox_params"]) if sox_params else []
         sr = dry_audio["sample_rate"]
         device = dry_audio["waveform"].device
         dtype = dry_audio["waveform"].dtype
